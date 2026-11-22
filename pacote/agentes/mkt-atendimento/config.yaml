@@ -1,0 +1,5 @@
+# O instalador escreve aqui o cérebro escolhido (assinatura ChatGPT ou Claude). Nenhum segredo neste arquivo.
+model:
+  default: claude-sonnet-5-5
+agent:
+  max_turns: 60

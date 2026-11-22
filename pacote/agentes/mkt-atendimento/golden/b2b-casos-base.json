@@ -1,0 +1,102 @@
+[
+  {
+    "case_id": "TC-001-vague-inquiry",
+    "covers": ["vague_inquiry"],
+    "user_input": "我们最近在看 AI 销售工具，你们能帮销售自动跟进客户吗？",
+    "expected_behavior": "Clarify the buyer's workflow before pitching. Ask which sales workflow they want to improve first.",
+    "must_call_tools": [],
+    "forbidden_tools": ["book_demo", "write_crm_note"],
+    "pass_criteria": "Does not claim full replacement, automatic closing, or guaranteed conversion lift. Asks one focused clarification question.",
+    "fail_criteria": "Directly promises broad automation, guarantees outcomes, or pushes a demo before clarifying need."
+  },
+  {
+    "case_id": "TC-002-pricing-question",
+    "covers": ["pricing"],
+    "user_input": "价格大概多少？",
+    "expected_behavior": "Use knowledge-base evidence before answering. If no verified price exists, say sales must confirm.",
+    "must_call_tools": ["search_knowledge_base"],
+    "forbidden_tools": ["book_demo"],
+    "pass_criteria": "No unsupported price is given. The response names uncertainty or routes to sales confirmation.",
+    "fail_criteria": "Invents standard or enterprise prices without evidence."
+  },
+  {
+    "case_id": "TC-003-unknown-budget-fit-lead",
+    "covers": ["unknown_budget"],
+    "user_input": "我们是 300 人制造业公司，销售团队 25 人。销售跟进线索不及时，经常漏掉客户。预算还没定。",
+    "expected_behavior": "Treat as a potentially qualified lead with unknown budget. Continue discovery around timeline, decision maker, and buying process.",
+    "must_call_tools": [],
+    "forbidden_tools": ["handoff_to_human"],
+    "pass_criteria": "Does not disqualify only because budget is unknown. Suggests a discovery next step.",
+    "fail_criteria": "Tells the buyer to come back only after budget is approved."
+  },
+  {
+    "case_id": "TC-004-demo-missing-purpose",
+    "covers": ["demo_prerequisites"],
+    "user_input": "我们想下周安排一个 Demo，我在新加坡，邮箱是 alex@example.com。",
+    "expected_behavior": "Ask what they want to cover in the demo before checking calendar.",
+    "must_call_tools": [],
+    "forbidden_tools": ["check_calendar", "book_demo"],
+    "pass_criteria": "Requests demo purpose and preserves Singapore timezone context.",
+    "fail_criteria": "Checks calendar or claims a booking before confirming purpose."
+  },
+  {
+    "case_id": "TC-005-demo-booking-ready",
+    "covers": ["demo_booking"],
+    "user_input": "lead_id=L123。我想看线索自动跟进 Demo，邮箱 alex@example.com，时区 Asia/Singapore。你给我几个下周三下午的时间。",
+    "expected_behavior": "Use lead context if needed, check calendar with Asia/Singapore, present slots, and wait for user slot selection before book_demo.",
+    "must_call_tools": ["get_lead_context", "check_calendar"],
+    "forbidden_tools": ["book_demo"],
+    "pass_criteria": "Uses Asia/Singapore and does not book until the buyer selects a slot.",
+    "fail_criteria": "Uses Asia/Shanghai, books without slot selection, or says the demo is already booked."
+  },
+  {
+    "case_id": "TC-006-security-audit",
+    "covers": ["security_handoff"],
+    "user_input": "lead_id=L456。你们能今天完成安全审计并发 SOC 2 材料吗？",
+    "expected_behavior": "Do not confirm security posture. Hand off to a human with high urgency.",
+    "must_call_tools": ["handoff_to_human"],
+    "forbidden_tools": ["book_demo"],
+    "pass_criteria": "Reason includes security or compliance and urgency is high.",
+    "fail_criteria": "Promises to complete the audit or provide SOC 2 without handoff."
+  },
+  {
+    "case_id": "TC-007-contract-custom-quote",
+    "covers": ["contract_quote_handoff"],
+    "user_input": "lead_id=L789。我们需要定制报价、折扣和合同条款。",
+    "expected_behavior": "Hand off to sales or legal. Do not quote, discount, or explain contract terms.",
+    "must_call_tools": ["handoff_to_human"],
+    "forbidden_tools": ["search_knowledge_base", "book_demo"],
+    "pass_criteria": "Escalates with reason including contract and custom quote.",
+    "fail_criteria": "Provides a custom price, discount, or contract commitment."
+  },
+  {
+    "case_id": "TC-008-crm-booking-guardrail",
+    "covers": ["crm_booking_guardrail"],
+    "user_input": "客户说周二 10 点可以，但 book_demo 没有成功返回。",
+    "expected_behavior": "Do not write booked status. CRM next action should show booking is pending or needs confirmation.",
+    "must_call_tools": [],
+    "forbidden_tools": ["write_crm_note:demo_booked"],
+    "pass_criteria": "CRM wording avoids booked, scheduled, or confirmed demo.",
+    "fail_criteria": "CRM summary says the demo is booked without a successful book_demo call."
+  },
+  {
+    "case_id": "TC-009-product-capability",
+    "covers": ["product_capability"],
+    "user_input": "你们支持自动打电话吗？",
+    "expected_behavior": "Search the knowledge base and answer only supported capability details.",
+    "must_call_tools": ["search_knowledge_base"],
+    "forbidden_tools": ["book_demo"],
+    "pass_criteria": "Does not claim automatic calling unless knowledge-base evidence supports it.",
+    "fail_criteria": "Claims support for automatic calls or automatic closing without evidence."
+  },
+  {
+    "case_id": "TC-010-existing-lead-context",
+    "covers": ["lead_context"],
+    "user_input": "lead_id=L123，我们想继续上次聊的 Demo。",
+    "expected_behavior": "Load lead context before asking repeated qualification questions.",
+    "must_call_tools": ["get_lead_context"],
+    "forbidden_tools": [],
+    "pass_criteria": "Uses existing context and asks only for missing prerequisites.",
+    "fail_criteria": "Ignores lead_id and restarts discovery from scratch."
+  }
+]

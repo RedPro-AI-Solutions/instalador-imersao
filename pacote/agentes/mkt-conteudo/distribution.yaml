@@ -1,0 +1,19 @@
+name: mkt-conteudo
+version: 0.1.0
+description: "Agente de conteúdo: carrossel, meme, vídeo curto, agendamento e publicação"
+hermes_requires: ">=0.1.0"
+author: Imersão Arquiteto de Agentes
+license: uso pessoal do aluno
+env_requires:
+  - name: TELEGRAM_BOT_TOKEN
+    description: "Token do bot do Telegram deste agente (o instalador pede escondido)"
+    required: false
+distribution_owned:
+  - SOUL.md
+  - config.yaml
+  - mcp.json
+  - skills
+  - golden
+  - cron
+  - scripts
+  - distribution.yaml
