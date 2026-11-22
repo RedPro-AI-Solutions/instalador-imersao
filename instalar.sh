@@ -31,9 +31,9 @@ PLUGIN_CLAUDE_NOME="claude-subscription-directsdk-experimental"
 CLAUDE_CODE_VERSAO="2.1.312"
 MODELO_CLAUDE="claude-sonnet-5-5"
 MODELO_CHATGPT="gpt-5.5"
-PACOTE_VERSAO="v1.0.0"
+PACOTE_VERSAO="v1.0.1"
 PACOTE_URL="${PACOTE_URL:-https://github.com/RedPro-AI-Solutions/instalador-imersao/releases/download/$PACOTE_VERSAO/pacote-squad.tar.gz}"
-PACOTE_SHA256="095c09c20f011d294c75576f23884abaebbd4b9717535f0f5a5e30c6b0c8150e"
+PACOTE_SHA256="ff0a32af208de51e5ed89befd01af2482e3c7ccf99dc5bc6285fdafe5d38d2ca"
 
 # ---------------------------------------------------------------- caminhos
 U="hermes"

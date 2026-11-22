@@ -30,6 +30,8 @@ sudo instalar-imersao --refazer cerebro  # refaz uma etapa já concluída
 
 Prefere fazer à mão? O manual da Imersão tem os mesmos comandos, passo a passo.
 
+Skills de terceiros e suas licenças: veja `CREDITOS.md`.
+
 ## Segurança
 
 - Os tokens são digitados sem aparecer na tela. Eles nunca são gravados no registro (`/var/log/imersao-instalador.log`) e não aparecem na lista de processos.
