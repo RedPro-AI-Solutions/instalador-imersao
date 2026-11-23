@@ -264,14 +264,19 @@ etapa_ssh() {
   echo
   echo "  ${B}Teste agora, SEM fechar esta janela:${R}"
   echo "  ${B}${AMAR}ATENÇÃO: este teste é no terminal do SEU COMPUTADOR, NÃO nesta tela do Console web.${R}"
+  echo "  (Se a linha onde você digita começa com root@srv..., você ainda está no Console web.)"
   echo "  1. No seu computador, abra o terminal (Windows: PowerShell · Mac: Terminal). Deixe esta tela aberta."
   if [ "${p:-22}" = 22 ]; then echo "  2. Digite:  ssh $U@$ip"; else echo "  2. Digite:  ssh -p $p $U@$ip"; fi
   echo "     Se você deu outro nome à chave (não é o id_ed25519), diga qual:  ssh -i ~/.ssh/NOME_DA_CHAVE $U@$ip"
   echo "  3. Se entrar sem pedir senha da VPS, deu certo. Pode sair com: exit"
+  echo "  ${B}Pediu senha? Não digite nada.${R} Volte aqui e responda n. A senha continua ligada e você corrige com calma:"
+  echo "  confira se a chave cadastrada na Hostinger é a deste computador."
   echo "  Depois de trancado, para rodar o instalador de novo: entre como $U e use  sudo instalar-imersao"
   echo
   if ! sim "Você conseguiu entrar como $U com a chave?"; then
-    aviso "Tudo bem. A senha continua ligada por enquanto. Confira o Passo 3 do manual e rode o instalador de novo."
+    aviso "Tudo bem: nada foi trancado. A senha e o root continuam ligados."
+    aviso "Confira se a chave cadastrada na Hostinger (ou colada aqui) é a do computador que você usou (Passo 3 do manual)."
+    aviso "Depois teste de novo no SEU computador e rode só esta etapa:  sudo instalar-imersao --so ssh"
     aviso "As outras etapas seguem normalmente."
     adiar; return 0
   fi
