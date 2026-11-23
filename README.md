@@ -7,7 +7,7 @@ Este instalador prepara, numa VPS Ubuntu novinha, tudo o que o seu Squad de agen
 3. **Conecta o cérebro** à sua assinatura do Claude (Pro/Max) ou do ChatGPT (Plus/Pro). Não usa chave de API.
 4. **Instala os 3 agentes do Squad**: Atendimento, Carrosséis e Landing pages. Eles vêm com modelos em branco dos arquivos da sua marca.
 5. **Liga um bot do Telegram por agente.** Só você consegue falar com ele.
-6. **Liga o agente de Atendimento ao WhatsApp do negócio** (opcional). É o seu SDR: só ele fica no WhatsApp, conectado por QR code a um número só do negócio, sem selo de robô, sem grupos e sem acesso a arquivos ou ao terminal da VPS.
+6. **Liga o agente de Atendimento ao WhatsApp do negócio** (opcional, fora do fluxo normal: é feito no fim da noite 2 com `sudo instalar-imersao --whatsapp`). É o seu SDR: só ele fica no WhatsApp, conectado por QR code a um número só do negócio, sem selo de robô, sem grupos e sem acesso a arquivos ou ao terminal da VPS.
 7. **Deixa tudo como serviço.** Os agentes voltam sozinhos se a VPS reiniciar.
 
 A cada etapa, o instalador explica em português o que está fazendo e por quê.

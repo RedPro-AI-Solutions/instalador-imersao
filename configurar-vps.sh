@@ -11,6 +11,8 @@
 #  Rodar de novo é seguro: cada etapa confere o que já está pronto e pula.
 #  Opções:
 #     --so <etapa>        roda só uma etapa (ex.: --so telegram, --so cerebro)
+#     --whatsapp          liga o Atendimento ao WhatsApp do negócio (o mesmo que --so whatsapp;
+#                         fica fora do fluxo normal, é feito no fim da noite 2)
 #     --refazer <etapa>   refaz uma etapa que já tinha sido concluída
 #     --pacote <arquivo>  usa um pacote .tar.gz local em vez de baixar
 #     --listar            mostra as etapas e o que já está pronto
@@ -21,7 +23,7 @@
 #                         Liga sozinho quando não há terminal interativo.
 #     --cerebro <qual>    claude ou chatgpt (evita a pergunta; útil no modo agente)
 #  Etapas: sistema atualizar usuario firewall ssh hermes cerebro agentes
-#          telegram whatsapp servico conferir onboarding
+#          telegram servico conferir onboarding   (extra: whatsapp, só com --so)
 #
 #  Segurança: nenhum token aparece na tela nem vai para o log. Tokens são
 #  digitados escondidos e guardados em arquivo que só o usuário hermes lê.
@@ -56,7 +58,9 @@ PACOTE_DIR="/opt/imersao/pacote"
 MARCA_DIR="$UHOME/marca"
 AGENTES=(mkt-atendimento mkt-conteudo mkt-landing)
 declare -A NOME_AGENTE=([mkt-atendimento]="Atendimento" [mkt-conteudo]="Carrosséis" [mkt-landing]="Landing pages")
-ETAPAS=(sistema atualizar usuario firewall ssh hermes cerebro agentes telegram whatsapp servico conferir onboarding)
+ETAPAS=(sistema atualizar usuario firewall ssh hermes cerebro agentes telegram servico conferir onboarding)
+# Fora do fluxo normal (Red, 23/11): o WhatsApp do Atendimento é ligado no fim da noite 2, só com --so whatsapp (ou --whatsapp).
+ETAPAS_EXTRA=(whatsapp)
 
 # ---------------------------------------------------------------- aparência
 if [ -t 1 ]; then B=$'\e[1m'; VERDE=$'\e[32m'; AMAR=$'\e[33m'; VERM=$'\e[31m'; AZUL=$'\e[36m'; R=$'\e[0m'
@@ -65,8 +69,9 @@ else B=""; VERDE=""; AMAR=""; VERM=""; AZUL=""; R=""; fi
 log()    { printf '%s %s\n' "$(date '+%F %T')" "$*" >>"$LOG"; }
 MARCA="RedPro AI Academy"
 CURSO="Imersão Arquiteto de Agentes"
-titulo() { printf '\n%s━━━ Etapa %s/%s · %s%s  %s· %s%s\n' "$B$AZUL" "$1" "${#ETAPAS[@]}" "$2" "$R" "$AZUL" "$MARCA" "$R"; log "ETAPA $2"; ETAPA_N="$1"; ETAPA_T="$2"; }
-fim_etapa() { printf '  %s── %s · etapa %s/%s concluída%s\n' "$AZUL" "$MARCA" "$1" "${#ETAPAS[@]}" "$R"; }
+num_etapa() { case "$1" in extra) echo "extra" ;; *) echo "$1/${#ETAPAS[@]}" ;; esac; }
+titulo() { printf '\n%s━━━ Etapa %s · %s%s  %s· %s%s\n' "$B$AZUL" "$(num_etapa "$1")" "$2" "$R" "$AZUL" "$MARCA" "$R"; log "ETAPA $2"; ETAPA_N="$1"; ETAPA_T="$2"; }
+fim_etapa() { printf '  %s── %s · etapa %s concluída%s\n' "$AZUL" "$MARCA" "$(num_etapa "$1")" "$R"; }
 # O que o aluno precisa guardar. Segredo (token, senha) vai só no gerenciador de senhas, nunca em documento.
 guarde()   { printf '  %s📌 Guarde isto no seu Google Docs:%s %s\n' "$B$AMAR" "$R" "$*"; }
 guarde_segredo() { printf '  %s🔐 Isto é segredo: guarde só no seu gerenciador de senhas, nunca em documento:%s %s\n' "$B$AMAR" "$R" "$*"; }
@@ -76,7 +81,7 @@ banner() {
   printf '  |                                                  |\n'
   printf '  |   R E D P R O   A I   A C A D E M Y              |\n'
   printf '  |   Imersão Arquiteto de Agentes                   |\n'
-  printf '  |   Instalador oficial do Squad de agentes         |\n'
+  printf '  |   Instalador Oficial da VPS RedPro AI Academy    |\n'
   printf '  |                                                  |\n'
   printf '  +--------------------------------------------------+\n'
   printf '%s' "$R"
@@ -86,16 +91,64 @@ porque() { printf '%s  Por quê:%s %s\n' "$AMAR" "$R" "$*"; pausa_etapa; }
 pausa_etapa() {
   [ "$PAUSAR" = 1 ] && [ "$AGENTE" = 0 ] || return 0
   local __v
-  read -r -p "  ${B}▶ Etapa ${ETAPA_N}/${#ETAPAS[@]} · ${ETAPA_T} · aperte Enter para começar${R} " __v <"$TTY" || true
+  read -r -p "  ${B}▶ Etapa $(num_etapa "$ETAPA_N") · ${ETAPA_T} · aperte Enter para começar${R} " __v <"$TTY" || true
 }
 faz()    { printf '  → %s\n' "$*"; log "$*"; }
 ok()     { printf '  %s✔ %s%s\n' "$VERDE" "$*" "$R"; log "OK $*"; }
 pula()   { printf '  %s✔ Já estava pronto:%s %s\n' "$VERDE" "$R" "$*"; log "PULA $*"; }
 aviso()  { printf '  %s! %s%s\n' "$AMAR" "$*" "$R"; log "AVISO $*"; }
-erro()   { printf '\n%s✖ %s%s\n' "$VERM" "$*" "$R" >&2; log "ERRO $*"; exit 1; }
+erro()   { prog_parar; printf '\n%s✖ %s%s\n' "$VERM" "$*" "$R" >&2; log "ERRO $*"; exit 1; }
+
+# ---------------------------------------------------------------- progresso
+# Comando demorado mostra "⏳ [█████░░░░░░░░░░░░░░░]  27% · rótulo · 0 min 41 s" e atualiza sozinho, para ninguém achar que travou.
+# Uso: progresso INI FIM SEGUNDOS_ESPERADOS "rótulo" comando...   (a saída do comando vai para o registro)
+# PROG_MARCAS=("regex|%|rótulo" ...): fases reais lidas no registro; entre uma fase e outra a % anda pelo tempo esperado.
+PROG_PID=""; PROG_MARCAS=()
+dur()   { local s=$1; if [ "$s" -lt 60 ]; then printf '%d s' "$s"; else printf '%d min %02d s' $((s / 60)) $((s % 60)); fi; }
+barra() { local n=$(( $1 / 5 )) c v; printf -v c '%*s' "$n" ''; printf -v v '%*s' $((20 - n)) ''; printf '[%s%s] %3d%%' "${c// /█}" "${v// /░}" "$1"; }
+prog_parar() { if [ -n "${PROG_PID:-}" ]; then kill "$PROG_PID" 2>/dev/null || true; wait "$PROG_PID" 2>/dev/null || true; PROG_PID=""; fi; }
+prog_mostrador() {
+  trap - ERR INT; set +e
+  local ini=$1 fim=$2 est=$3 rot=$4 pos=$5 t0=$SECONDS base=$1 tb=$SECONDS pct=$1 prox m re mp mr alvo novo d ult=-999 lento
+  while sleep 1; do
+    if [ ${#PROG_MARCAS[@]} -gt 0 ]; then
+      novo=$(tail -c +$((pos + 1)) "$LOG" 2>/dev/null)
+      for m in "${PROG_MARCAS[@]}"; do
+        IFS='|' read -r re mp mr <<<"$m"
+        if [ "$mp" -gt "$base" ] && grep -qE -- "$re" <<<"$novo"; then base=$mp; rot=$mr; tb=$SECONDS; fi
+      done
+    fi
+    prox=$fim
+    for m in "${PROG_MARCAS[@]}"; do IFS='|' read -r re mp mr <<<"$m"; [ "$mp" -gt "$base" ] && [ "$mp" -lt "$prox" ] && prox=$mp; done
+    alvo=$(( base + (fim - ini) * (SECONDS - tb) / est ))
+    [ "$alvo" -lt "$prox" ] || alvo=$(( prox - 1 ))
+    [ "$alvo" -gt "$pct" ] && pct=$alvo
+    d=$(( SECONDS - t0 )); lento=""
+    [ "$d" -gt $(( est * 2 + 30 )) ] && lento=" · a internet da VPS está lenta, mas segue"
+    if [ -t 1 ]; then
+      printf '\r\e[K  ⏳ %s · %s · %s%s' "$(barra "$pct")" "$rot" "$(dur "$d")" "$lento"
+    elif [ $(( d - ult )) -ge 20 ]; then
+      printf '  ⏳ %s · %s · %s%s\n' "$(barra "$pct")" "$rot" "$(dur "$d")" "$lento"; ult=$d
+    fi
+  done
+}
+progresso() {
+  local ini=$1 fim=$2 est=$3 rot=$4 st=0 t0=$SECONDS; shift 4
+  log "$rot"
+  prog_mostrador "$ini" "$fim" "$est" "$rot" "$(stat -c %s "$LOG" 2>/dev/null || echo 0)" &
+  PROG_PID=$!
+  "$@" >>"$LOG" 2>&1 || st=$?
+  prog_parar; PROG_MARCAS=()
+  [ -t 1 ] && printf '\r\e[K'
+  if [ "$st" = 0 ]; then
+    local b=""; [ "$fim" -lt 100 ] || b="$(barra 100) · "   # parte de uma etapa: só o ✔; a barra cheia fica para o fim
+    printf '  %s✔ %s%s · %s%s\n' "$VERDE" "$b" "$rot" "$(dur $((SECONDS - t0)))" "$R"
+  else printf '  %s✖ %s · %s%s\n' "$VERM" "$(barra "$ini")" "$rot" "$R"; fi
+  return "$st"
+}
 
 trap 'erro "Algo falhou na linha $LINENO. Nada foi perdido: rode de novo (sudo instalar-imersao) que o instalador continua de onde parou. Detalhes em $LOG."' ERR
-trap 'trap - ERR; printf "\n%sInstalador interrompido (Ctrl+C). No Console web, Ctrl+C interrompe em vez de copiar: para copiar use Ctrl+Shift+C.%s\nNada foi perdido: rode  sudo instalar-imersao  que ele continua de onde parou.\n" "$AMAR" "$R" >&2; log "INTERROMPIDO"; exit 130' INT
+trap 'trap - ERR; prog_parar; printf "\n%sInstalador interrompido (Ctrl+C). No Console web, Ctrl+C interrompe em vez de copiar: para copiar use Ctrl+Shift+C.%s\nNada foi perdido: rode  sudo instalar-imersao  que ele continua de onde parou.\n" "$AMAR" "$R" >&2; log "INTERROMPIDO"; exit 130' INT
 
 # Perguntas sempre leem do teclado, mesmo quando o script veio por "curl | bash".
 TTY=/dev/tty
@@ -160,12 +213,13 @@ etapa_atualizar() {
   titulo 2 "Atualizar o sistema e ligar as atualizações automáticas"
   porque "servidor desatualizado é a porta de entrada mais comum de invasão. As correções de segurança passam a cair sozinhas toda noite."
   export DEBIAN_FRONTEND=noninteractive
-  faz "Baixando a lista de atualizações (pode levar alguns minutos)"
-  apt-get update -qq >>"$LOG" 2>&1
-  faz "Instalando as atualizações"
-  apt-get -y -qq -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold upgrade >>"$LOG" 2>&1
-  faz "Instalando ferramentas: git, firewall (ufw), fail2ban, atualizações automáticas"
-  apt-get -y -qq install curl git ufw fail2ban unattended-upgrades ca-certificates jq tar >>"$LOG" 2>&1
+  echo "  Leva cerca de 1 minuto (até 5 numa VPS mais antiga). A barra anda sozinha."
+  progresso 0 15 15 "baixando a lista de atualizações" apt-get update -qq
+  PROG_MARCAS=("Setting up|50|configurando os pacotes novos")
+  progresso 15 85 60 "instalando as atualizações" \
+    apt-get -y -q -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold upgrade
+  progresso 85 100 20 "instalando git, firewall (ufw), fail2ban e atualizações automáticas" \
+    apt-get -y -qq install curl git ufw fail2ban unattended-upgrades ca-certificates jq tar
   timedatectl set-timezone America/Sao_Paulo 2>/dev/null || true
   ok "Fuso horário: $(timedatectl show -p Timezone --value 2>/dev/null || echo America/Sao_Paulo)"
   cat >/etc/apt/apt.conf.d/20auto-upgrades <<'EOF'
@@ -302,9 +356,16 @@ etapa_hermes() {
   if [ -x "$UHOME/.local/bin/hermes" ] && [ "$(comoh git -C "$dir" rev-parse HEAD 2>/dev/null)" = "$HERMES_COMMIT" ]; then
     pula "Hermes $HERMES_VERSAO"; return
   fi
-  faz "Baixando e instalando (5 a 10 minutos; a tela pode ficar parada, é normal)"
-  comoh bash -c "curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/$HERMES_COMMIT/scripts/install.sh \
-     | bash -s -- --commit $HERMES_COMMIT --non-interactive --skip-computer-use" >>"$LOG" 2>&1 \
+  echo "  Leva cerca de 2 minutos (pode chegar a 10 se a internet da VPS estiver lenta). A barra anda sozinha."
+  PROG_MARCAS=("Cloning|3|baixando o Hermes" "Hermes Agent cloned|12|preparando o Python"
+    "Installing dependencies|22|instalando as dependências" "✓ node|40|instalando as dependências (Node)"
+    "✓ python|50|instalando as dependências (Python)" "✓ chromium|62|instalando o navegador dos agentes"
+    "dependencies installed|66|montando o comando hermes" "Building the TUI|76|montando a tela do Hermes"
+    "Building the web UI|84|montando o painel web" "Syncing bundled skills|92|instalando as habilidades"
+    "Install complete|97|conferindo a instalação")
+  progresso 0 100 90 "instalando o Hermes" \
+    comoh bash -c "curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/$HERMES_COMMIT/scripts/install.sh \
+     | bash -s -- --commit $HERMES_COMMIT --non-interactive --skip-computer-use" \
      || erro "A instalação do Hermes falhou. Veja o fim de $LOG e rode de novo."
   [ "$(comoh git -C "$dir" rev-parse HEAD 2>/dev/null)" = "$HERMES_COMMIT" ] || erro "O Hermes instalou numa versão diferente da esperada."
   ok "Hermes instalado: $(hermes_h --version 2>/dev/null | head -1)"
@@ -351,8 +412,16 @@ etapa_cerebro() {
     if claude_logado; then pula "assinatura do Claude conectada"; return; fi
     if [ "$AGENTE" = 1 ]; then humano cerebro "entrar com a sua conta do Claude (abre um link e você cola o código)"; return 0; fi
     echo
-    echo "  Vai aparecer um link. Abra no navegador do SEU computador, entre na sua conta do Claude,"
-    echo "  clique em Autorizar e cole aqui o código que aparecer. O código vale só uma vez."
+    echo "  ${B}Como entrar na sua conta do Claude (leva 1 minuto):${R}"
+    echo "  1. Vai aparecer um link comprido. Clicar nele aqui no Console web não abre o navegador:"
+    echo "     selecione o link inteiro com o mouse e use o botão direito → Copiar (ou Ctrl+Shift+C)."
+    echo "  2. Cole numa aba nova do navegador do SEU computador e entre na sua conta do Claude (Pro ou Max)."
+    echo "  3. Clique em Autorizar. Vai aparecer um código: clique em Copiar código (Copy Code)."
+    echo "  4. Volte aqui, clique nesta tela, cole com o botão direito → Colar e aperte Enter."
+    echo
+    echo "  ${B}${AMAR}Atenção: quando você colar o código do Claude, ele NÃO vai aparecer na tela. É normal.${R}"
+    echo "  ${B}${AMAR}Cole com o botão direito → Colar e aperte Enter: o Claude conecta.${R}"
+    echo "  (As mensagens do login aparecem em inglês, porque vêm do próprio Claude. \"Paste code here\" = cole o código aqui.)"
     echo
     comoh env CLAUDE_CONFIG_DIR="$UHOME/.claude" "$UHOME/.local/bin/claude" auth login <"$TTY" >"$TTY" 2>&1 || true
     if claude_logado; then ok "Assinatura do Claude conectada"; religar_agentes
@@ -432,23 +501,39 @@ etapa_agentes() {
   fi
   chown -R "$U:$U" "$MARCA_DIR"
   ok "Modelos da sua marca em $MARCA_DIR (em branco: o onboarding preenche com você)"
-  local p
+  local p i=0 n=${#AGENTES[@]}
   for p in "${AGENTES[@]}"; do
-    faz "Agente ${NOME_AGENTE[$p]} ($p)"
     # --force atualiza os arquivos do agente e preserva memória, sessões e o .env.
-    hermes_h profile install "$PACOTE_DIR/agentes/$p" --name "$p" --force -y >>"$LOG" 2>&1 \
+    progresso $((i * 100 / n)) $(((i + 1) * 100 / n)) 30 "instalando o agente ${NOME_AGENTE[$p]} ($((i + 1)) de $n)" \
+      hermes_h profile install "$PACOTE_DIR/agentes/$p" --name "$p" --force -y \
       || erro "Não consegui instalar o agente $p. Veja $LOG."
     aplicar_cerebro "$p"
     ok "${NOME_AGENTE[$p]} instalado"
+    i=$((i + 1))
   done
+}
+
+# Lista os bots já ligados (Atendimento → Carrosséis → Landing pages) com o link de cada um.
+resumo_bots() {
+  local p tk u
+  echo "Seus bots no Telegram:"
+  for p in "${AGENTES[@]}"; do
+    tk=$(env_get "$UHOME/.hermes/profiles/$p/.env" TELEGRAM_BOT_TOKEN)
+    u=""; [ -z "$tk" ] || u=$(tg "$tk" getMe 2>/dev/null | jq -r '.result.username // empty')
+    if [ -n "$u" ]; then printf '  • %s: @%s  ·  t.me/%s\n' "${NOME_AGENTE[$p]}" "$u" "$u"
+    else printf '  • %s: ainda sem bot\n' "${NOME_AGENTE[$p]}"; fi
+  done
+  unset tk
 }
 
 # =============================================================================
 etapa_telegram() {
   titulo 9 "Dar um bot do Telegram para cada agente"
   porque "é pelo Telegram que você conversa com cada agente. Cada um tem o próprio bot, e só VOCÊ consegue falar com ele."
-  local p envf token tid nome usuario faltam=()
+  [ "$AGENTE" = 1 ] || { echo "  Você criou os 3 bots na noite 1. Pegue os tokens no seu gerenciador de senhas."; echo "  Ordem: Atendimento → Carrosséis → Landing pages."; }
+  local p envf token tid nome usuario faltam=() nbot=0 rot
   for p in "${AGENTES[@]}"; do
+    nbot=$((nbot + 1)); rot=${NOME_AGENTE[$p]^^}
     envf="$UHOME/.hermes/profiles/$p/.env"
     token=$(env_get "$envf" TELEGRAM_BOT_TOKEN)
     if [ -n "$token" ] && [ -n "$(env_get "$envf" TELEGRAM_ALLOWED_USERS)" ] && tg "$token" getMe >/dev/null 2>&1; then
@@ -456,19 +541,15 @@ etapa_telegram() {
     fi
     if [ "$AGENTE" = 1 ]; then faltam+=("${NOME_AGENTE[$p]}"); continue; fi
     echo
-    echo "  ${B}Bot do agente ${NOME_AGENTE[$p]}${R}"
-    echo "  No Telegram, fale com @BotFather → /newbot → dê um nome → ele te entrega um token."
-    echo "  Ainda não criou o bot? Digite pular: os outros passos seguem e depois você roda: sudo instalar-imersao --so telegram"
-    guarde_segredo "o token do bot (o instalador não mostra nem grava ele em lugar nenhum além da VPS)"
+    echo "  ${B}Bot $nbot de ${#AGENTES[@]} · agente de $rot${R}"
+    echo "  ${AMAR}Ao colar, o token NÃO aparece na tela. É normal: cole uma vez só e aperte Enter.${R}"
     usuario=""
     while :; do
-      token=$(segredo "Cole o token do bot (não aparece na tela):")
+      token=$(segredo "Bot $nbot de ${#AGENTES[@]} · agente de $rot · cole o token que você guardou (não aparece na tela):")
       [ -n "$token" ] || continue
-      [ "${token,,}" = pular ] && break
       if usuario=$(tg "$token" getMe 2>/dev/null | jq -r '.result.username // empty') && [ -n "$usuario" ]; then break; fi
-      aviso "O Telegram não aceitou esse token. Copie de novo a mensagem do BotFather."
+      aviso "Esse token não funcionou no Telegram. Copie de novo do seu gerenciador de senhas (o token inteiro, com os dois-pontos) e cole outra vez."
     done
-    if [ -z "$usuario" ]; then aviso "Bot do agente ${NOME_AGENTE[$p]} ficou para depois."; unset token; adiar; continue; fi
     ok "Bot @$usuario conferido"
     guarde "o bot do agente ${NOME_AGENTE[$p]} é @$usuario (t.me/$usuario)"
     systemctl stop "imersao-$p" 2>/dev/null || true   # o serviço ligado "come" as mensagens que vamos ler agora
@@ -511,7 +592,7 @@ wa_pareado() {
 }
 
 etapa_whatsapp() {
-  titulo 10 "Ligar o agente de Atendimento ao WhatsApp do negócio (opcional)"
+  titulo extra "Ligar o agente de Atendimento ao WhatsApp do negócio (opcional)"
   porque "o Atendimento é o seu SDR: responde quem chama no WhatsApp do negócio e passa para você o que precisa de gente. Só ele fica no WhatsApp."
   local p="$WA_AGENTE" h="$UHOME/.hermes/profiles/$WA_AGENTE" envf quem py
   envf="$h/.env"
@@ -579,7 +660,7 @@ EOF
 
 # =============================================================================
 etapa_servico() {
-  titulo 11 "Deixar os agentes ligados 24 horas"
+  titulo 10 "Deixar os agentes ligados 24 horas"
   porque "como serviço do sistema, cada agente liga sozinho quando a VPS reinicia e volta se cair."
   local p unit
   if ! feito agentes; then aviso "Os agentes ainda não foram instalados; o serviço fica para depois."; adiar; return 0; fi
@@ -633,7 +714,7 @@ servico_firme() {
 
 # =============================================================================
 etapa_conferir() {
-  titulo 12 "Conferência final"
+  titulo 11 "Conferência final"
   porque "instalação só está pronta quando cada agente responde de verdade."
   local p falhas=0 resp rc envf token tid
   for p in "${AGENTES[@]}"; do
@@ -662,14 +743,14 @@ etapa_conferir() {
   if wa_pareado && [ "$(env_get "$UHOME/.hermes/profiles/$WA_AGENTE/.env" WHATSAPP_ENABLED)" = true ]; then
     ok "WhatsApp do negócio ligado ao agente ${NOME_AGENTE[$WA_AGENTE]}"
   else
-    printf '  · WhatsApp do Atendimento ainda não ligado (opcional): sudo instalar-imersao --so whatsapp\n'
+    printf '  · WhatsApp do Atendimento: fica para o fim da noite 2 (sudo instalar-imersao --so whatsapp)\n'
   fi
   [ "$falhas" -eq 0 ] || adiar
 }
 
 # =============================================================================
 etapa_onboarding() {
-  titulo 13 "Onboarding dos agentes"
+  titulo 12 "Onboarding dos agentes"
   porque "é a conversa em que cada agente aprende sobre o seu negócio e preenche os arquivos da sua marca."
   if [ -x "$PACOTE_DIR/onboarding/rodar.sh" ] && [ "$AGENTE" = 1 ]; then
     humano onboarding "conversar com os agentes no onboarding sobre o seu negócio"
@@ -691,7 +772,7 @@ rodar_etapa() {
   ADIADA=0; NAO_MARCAR=0
   "etapa_$e"
   if [ "$ADIADA" = 1 ]; then PENDENTES+=("$e"); elif [ "$NAO_MARCAR" = 0 ]; then marcar "$e"; fi
-  local i n=0; for i in "${!ETAPAS[@]}"; do [ "${ETAPAS[$i]}" = "$e" ] && n=$((i + 1)); done
+  local i n=extra; for i in "${!ETAPAS[@]}"; do [ "${ETAPAS[$i]}" = "$e" ] && n=$((i + 1)); done
   [ "$ADIADA" = 1 ] || [ "$NAO_MARCAR" = 1 ] || fim_etapa "$n"
 }
 
@@ -744,6 +825,7 @@ main() {
   while [ $# -gt 0 ]; do
     case "$1" in
       --so) so="$2"; shift 2 ;;
+      --whatsapp) so=whatsapp; shift ;;
       --refazer) refazer="$2"; shift 2 ;;
       --pacote) PACOTE_LOCAL="$(readlink -f "$2")"; shift 2 ;;
       --agente) AGENTE=1; shift ;;
@@ -777,7 +859,7 @@ main() {
   done
   if [ -n "$so" ]; then
     PAUSAR=0
-    [[ " ${ETAPAS[*]} " == *" $so "* ]] || erro "Etapa desconhecida: $so. Etapas: ${ETAPAS[*]}"
+    [[ " ${ETAPAS[*]} ${ETAPAS_EXTRA[*]} " == *" $so "* ]] || erro "Etapa desconhecida: $so. Etapas: ${ETAPAS[*]} ${ETAPAS_EXTRA[*]}"
     rodar_etapa "$so" forcar
   else
     for e in "${ETAPAS[@]}"; do
@@ -791,8 +873,10 @@ main() {
   echo
   if [ ${#PENDENTES[@]} -eq 0 ] && [ -n "$so" ]; then
     echo "${B}${VERDE}Etapa $so concluída.${R}"
+    [ "$so" != telegram ] || resumo_bots
   elif [ ${#PENDENTES[@]} -eq 0 ]; then
     echo "${B}${VERDE}Tudo pronto.${R} Abra o Telegram: cada agente já te mandou um oi."
+    resumo_bots
   else
     echo "${B}${AMAR}Quase lá.${R} Ficou pendente: ${PENDENTES[*]}"
     echo "Resolva o que o aviso pediu e rode de novo: sudo instalar-imersao  (o que já está pronto é pulado)"
