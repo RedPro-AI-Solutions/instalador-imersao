@@ -4,8 +4,9 @@
 #  Prepara uma VPS Ubuntu nova (Hostinger ou outra) com o Hermes e os 3 agentes
 #  do Squad de marketing: atendimento, carrosséis e landing pages.
 #
-#  Uso (uma linha, como root na VPS):
-#     curl -fsSL https://redpro.com.br/instalar -o instalar.sh && bash instalar.sh
+#  Uso (uma linha, como root na VPS, de preferência pelo Console web da Hostinger):
+#     curl -fsSL "https://redpro.com.br/instalar?k=CHAVE" -o instalar.sh && bash instalar.sh
+#  O comando com a CHAVE da aula só aparece em redpro.com.br/configurar-vps, depois da senha.
 #
 #  Rodar de novo é seguro: cada etapa confere o que já está pronto e pula.
 #  Opções:
@@ -13,11 +14,18 @@
 #     --refazer <etapa>   refaz uma etapa que já tinha sido concluída
 #     --pacote <arquivo>  usa um pacote .tar.gz local em vez de baixar
 #     --listar            mostra as etapas e o que já está pronto
+#     --agente            modo para agente de terminal (Claude Code, Codex, Gemini CLI):
+#                         faz tudo o que não precisa de você e, no fim, lista os passos com
+#                         login, token ou teste de acesso para você rodar no SEU terminal.
+#                         Liga sozinho quando não há terminal interativo.
+#     --cerebro <qual>    claude ou chatgpt (evita a pergunta; útil no modo agente)
 #  Etapas: sistema atualizar usuario firewall ssh hermes cerebro agentes
 #          telegram whatsapp servico conferir onboarding
 #
 #  Segurança: nenhum token aparece na tela nem vai para o log. Tokens são
 #  digitados escondidos e guardados em arquivo que só o usuário hermes lê.
+#  No modo agente nenhum token, senha ou login passa pelo agente: esses passos
+#  ficam para a pessoa, no terminal dela.
 # =============================================================================
 set -Eeuo pipefail
 umask 022
@@ -32,7 +40,10 @@ CLAUDE_CODE_VERSAO="2.1.312"
 MODELO_CLAUDE="claude-sonnet-5-5"
 MODELO_CHATGPT="gpt-5.5"
 PACOTE_VERSAO="v1.0.1"
-PACOTE_URL="${PACOTE_URL:-https://github.com/RedPro-AI-Solutions/instalador-imersao/releases/download/$PACOTE_VERSAO/pacote-squad.tar.gz}"
+# Chave da aula: a página protegida (redpro.com.br/configurar-vps) entrega este script com a chave no lugar do marcador.
+# O pacote sai pela mesma rota protegida, com essa chave, e é conferido pelo sha256 abaixo.
+CHAVE="${IMERSAO_CHAVE:-__IMERSAO_CHAVE__}"
+PACOTE_URL="${PACOTE_URL:-https://redpro.com.br/instalar/arquivo/pacote-squad.tar.gz?k=$CHAVE}"
 PACOTE_SHA256="ff0a32af208de51e5ed89befd01af2482e3c7ccf99dc5bc6285fdafe5d38d2ca"
 
 # ---------------------------------------------------------------- caminhos
@@ -73,6 +84,11 @@ sim()      { local r; r=$(pergunta "$1 [s/n]"); [[ "${r,,}" =~ ^(s|sim|y|yes)$ ]
 
 feito()    { [ -f "$ESTADO/$1.ok" ]; }
 adiar()    { ADIADA=1; }   # etapa não concluída por escolha/espera do aluno: fica pendente, sem erro
+AGENTE=0; CEREBRO_ARG=""; HUMANO=(); OPCIONAL=(); NAO_MARCAR=0
+# Modo agente: o passo precisa da pessoa (login, token, teste de acesso). Não pergunta nada:
+# registra o que falta, segue com o resto e, no fim, mostra o comando para a pessoa rodar.
+humano()   { HUMANO+=("$1|$2"); aviso "Fica para você, no seu terminal: $2"; adiar; }
+tem_terminal() { ( : <"$TTY" ) 2>/dev/null; }
 marcar()   { date '+%F %T' >"$ESTADO/$1.ok"; }
 comoh()    { sudo -u "$U" -H env PATH="$UHOME/.local/bin:/usr/local/bin:/usr/bin:/bin" "$@"; }
 hermes_h() { comoh "$UHOME/.local/bin/hermes" "$@"; }
@@ -161,10 +177,11 @@ etapa_usuario() {
   fi
   if [ -s /root/.ssh/authorized_keys ] && ssh-keygen -lf /root/.ssh/authorized_keys >/dev/null 2>&1; then
     echo "  Achei uma chave que você cadastrou na Hostinger: $(ssh-keygen -lf /root/.ssh/authorized_keys | head -1 | awk '{print $2, $3}')"
-    if sim "Usar essa mesma chave para o usuário hermes?"; then
+    if [ "$AGENTE" = 1 ] || sim "Usar essa mesma chave para o usuário hermes?"; then
       cat /root/.ssh/authorized_keys >>"$ak"; ok "Chave copiada"; return
     fi
   fi
+  if [ "$AGENTE" = 1 ]; then humano usuario "cadastrar a sua chave SSH pública (a VPS não tem nenhuma)"; return 0; fi
   echo "  Cole a sua chave PÚBLICA (a linha que começa com ssh-ed25519, do arquivo id_ed25519.pub)."
   echo "  Ela não é segredo: é como o cadeado, não a chave. Veja o Passo 3 do manual se ainda não criou."
   local chave tmp; tmp=$(mktemp)
@@ -179,6 +196,7 @@ etapa_usuario() {
 }
 
 # =============================================================================
+ip_publico() { curl -fsS --max-time 8 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}'; }
 porta_ssh() {
   local t p; t=$(sshd -T 2>/dev/null || true)
   p=$(awk '/^port /{print $2}' <<<"$t" | head -1)
@@ -212,7 +230,10 @@ etapa_ssh() {
   porque "senha pode ser adivinhada; chave não. Mas só desligamos a senha DEPOIS de você provar que entra com a chave, para ninguém ficar trancado para fora."
   local conf=/etc/ssh/sshd_config.d/00-imersao.conf
   if [ -f "$conf" ]; then pula "entrada por senha e por root já desligadas"; return; fi
-  local ip; ip=$(curl -fsS --max-time 8 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')
+  if [ "$AGENTE" = 1 ]; then
+    humano ssh "testar a entrada com a sua chave e só então desligar a senha e o root"; return 0
+  fi
+  local ip; ip=$(ip_publico)
   local p; p=$(porta_ssh)
   echo
   echo "  ${B}Teste agora, SEM fechar esta janela:${R}"
@@ -256,6 +277,13 @@ etapa_hermes() {
 }
 
 # =============================================================================
+# Depois de um login feito mais tarde (modo agente), os agentes já instalados voltam com o cérebro novo.
+religar_agentes() {
+  local p
+  for p in "${AGENTES[@]}"; do
+    [ -f "/etc/systemd/system/imersao-$p.service" ] && systemctl restart "imersao-$p" && sleep 6 || true
+  done
+}
 cerebro_escolhido() { cat "$ESTADO/cerebro" 2>/dev/null || true; }
 
 claude_logado() { comoh env CLAUDE_CONFIG_DIR="$UHOME/.claude" "$UHOME/.local/bin/claude" auth status >/dev/null 2>&1; }
@@ -265,6 +293,11 @@ etapa_cerebro() {
   titulo 7 "Conectar o cérebro dos agentes"
   porque "o agente pensa usando a sua assinatura de IA. Você entra com a sua conta uma vez; nenhuma chave de API, nenhum custo por mensagem."
   local c; c=$(cerebro_escolhido)
+  if [ -z "$c" ] && [ -n "$CEREBRO_ARG" ]; then c="$CEREBRO_ARG"; echo "$c" >"$ESTADO/cerebro"; fi
+  if [ -z "$c" ] && [ "$AGENTE" = 1 ]; then
+    aviso "Falta dizer qual é a assinatura. Pergunte à pessoa (Claude ou ChatGPT) e rode de novo com --agente --cerebro claude (ou --cerebro chatgpt)."
+    adiar; return 0
+  fi
   if [ -z "$c" ]; then
     echo "  Qual assinatura você tem?"
     echo "    1) Claude (Pro ou Max)"
@@ -282,37 +315,46 @@ etapa_cerebro() {
     else pula "Claude Code $CLAUDE_CODE_VERSAO"; fi
     install -d -o "$U" -g "$U" -m 700 "$UHOME/.claude"
     if claude_logado; then pula "assinatura do Claude conectada"; return; fi
+    if [ "$AGENTE" = 1 ]; then humano cerebro "entrar com a sua conta do Claude (abre um link e você cola o código)"; return 0; fi
     echo
     echo "  Vai aparecer um link. Abra no navegador do SEU computador, entre na sua conta do Claude,"
     echo "  clique em Autorizar e cole aqui o código que aparecer. O código vale só uma vez."
     echo
     comoh env CLAUDE_CONFIG_DIR="$UHOME/.claude" "$UHOME/.local/bin/claude" auth login <"$TTY" >"$TTY" 2>&1 || true
-    if claude_logado; then ok "Assinatura do Claude conectada"
+    if claude_logado; then ok "Assinatura do Claude conectada"; religar_agentes
     else aviso "O login do Claude não terminou. Sigo com o resto; depois rode: sudo instalar-imersao --so cerebro"; adiar; fi
   else
     if codex_logado; then pula "assinatura do ChatGPT conectada"; return; fi
+    if [ "$AGENTE" = 1 ]; then humano cerebro "entrar com a sua conta do ChatGPT (abre um link e você digita um código)"; return 0; fi
     echo
     echo "  Vai aparecer um link e um código curto. Abra o link no navegador do SEU computador,"
     echo "  entre na sua conta do ChatGPT e digite o código. Depois volte aqui."
     echo
     hermes_h auth add openai-codex --type oauth --no-browser <"$TTY" >"$TTY" 2>&1 || true
-    if codex_logado; then ok "Assinatura do ChatGPT conectada"
+    if codex_logado; then ok "Assinatura do ChatGPT conectada"; religar_agentes
     else aviso "O login do ChatGPT não terminou. Sigo com o resto; depois rode: sudo instalar-imersao --so cerebro"; adiar; fi
   fi
 }
 
 # =============================================================================
 baixar_pacote() {
+  # Guarda o pacote conferido na VPS: o --refazer não baixa de novo (a chave da aula pode ter mudado).
+  local cache="$ESTADO/pacote-${PACOTE_SHA256:0:16}.tar.gz"
   if [ -n "${PACOTE_LOCAL:-}" ]; then
     faz "Usando o pacote local $PACOTE_LOCAL"; cp "$PACOTE_LOCAL" /tmp/imersao-pacote.tar.gz
+  elif [ -n "$PACOTE_SHA256" ] && [ -s "$cache" ]; then
+    faz "Usando o pacote dos agentes já baixado"; cp "$cache" /tmp/imersao-pacote.tar.gz
   else
+    [ "$CHAVE" != "__IMERSAO_""CHAVE__" ] || erro "Este instalador veio sem a chave da aula. Copie o comando da página redpro.com.br/configurar-vps e rode de novo."
     faz "Baixando o pacote dos agentes"
-    curl -fsSL --max-time 120 "$PACOTE_URL" -o /tmp/imersao-pacote.tar.gz
+    curl -fsSL --max-time 120 "$PACOTE_URL" -o /tmp/imersao-pacote.tar.gz \
+      || erro "Não consegui baixar o pacote dos agentes. Se a senha da aula mudou, copie o comando novo da página redpro.com.br/configurar-vps."
   fi
   if [ -n "$PACOTE_SHA256" ]; then
     echo "$PACOTE_SHA256  /tmp/imersao-pacote.tar.gz" | sha256sum -c --quiet - \
       || erro "O pacote baixado não confere com a assinatura esperada. Não vou instalar nada dele."
     ok "Pacote conferido (sha256)"
+    cp /tmp/imersao-pacote.tar.gz "$cache"; chmod 600 "$cache"
   fi
   rm -rf "$PACOTE_DIR.novo"; install -d "$PACOTE_DIR.novo"
   tar -xzf /tmp/imersao-pacote.tar.gz -C "$PACOTE_DIR.novo" --no-same-owner
@@ -343,7 +385,10 @@ aplicar_cerebro() {
 etapa_agentes() {
   titulo 8 "Instalar os 3 agentes do Squad"
   porque "cada agente é um perfil separado no Hermes, com a própria personalidade (SOUL), habilidades e memória. Um não mexe nas coisas do outro."
-  [ -n "$(cerebro_escolhido)" ] || erro "Escolha o cérebro antes: sudo instalar-imersao --so cerebro"
+  if [ -z "$(cerebro_escolhido)" ]; then
+    [ "$AGENTE" = 1 ] || erro "Escolha o cérebro antes: sudo instalar-imersao --so cerebro"
+    aviso "Os agentes esperam a escolha da assinatura (--cerebro claude ou --cerebro chatgpt)."; adiar; return 0
+  fi
   baixar_pacote
   if [ -d "$MARCA_DIR" ]; then
     faz "A pasta da sua marca já existe: só acrescento arquivos que faltam, sem mexer no que você escreveu"
@@ -368,13 +413,14 @@ etapa_agentes() {
 etapa_telegram() {
   titulo 9 "Dar um bot do Telegram para cada agente"
   porque "é pelo Telegram que você conversa com cada agente. Cada um tem o próprio bot, e só VOCÊ consegue falar com ele."
-  local p envf token tid nome usuario
+  local p envf token tid nome usuario faltam=()
   for p in "${AGENTES[@]}"; do
     envf="$UHOME/.hermes/profiles/$p/.env"
     token=$(env_get "$envf" TELEGRAM_BOT_TOKEN)
     if [ -n "$token" ] && [ -n "$(env_get "$envf" TELEGRAM_ALLOWED_USERS)" ] && tg "$token" getMe >/dev/null 2>&1; then
       pula "bot do agente ${NOME_AGENTE[$p]}"; continue
     fi
+    if [ "$AGENTE" = 1 ]; then faltam+=("${NOME_AGENTE[$p]}"); continue; fi
     echo
     echo "  ${B}Bot do agente ${NOME_AGENTE[$p]}${R}"
     echo "  No Telegram, fale com @BotFather → /newbot → dê um nome → ele te entrega um token."
@@ -411,6 +457,10 @@ etapa_telegram() {
       systemctl restart "imersao-$p"; sleep 6; ok "Agente ${NOME_AGENTE[$p]} religado com o bot novo"
     fi
   done
+  if [ ${#faltam[@]} -gt 0 ]; then
+    local lista; lista=$(printf '%s, ' "${faltam[@]}"); lista=${lista%, }
+    humano telegram "colar o token do bot do Telegram de cada agente ($lista) e mandar /start para ele"
+  fi
 }
 
 # =============================================================================
@@ -431,6 +481,11 @@ etapa_whatsapp() {
   envf="$h/.env"
   if wa_pareado && [ "$(env_get "$envf" WHATSAPP_ENABLED)" = true ]; then
     pula "WhatsApp ligado ao agente ${NOME_AGENTE[$p]}"; return 0
+  fi
+  if [ "$AGENTE" = 1 ]; then
+    OPCIONAL+=("whatsapp|ligar o Atendimento ao WhatsApp do negócio (QR code no celular do número do negócio)")
+    printf '  · WhatsApp do Atendimento (opcional): fica para você, no seu terminal.\n'
+    NAO_MARCAR=1; return 0
   fi
   echo "  Você precisa de um número SÓ do negócio (chip, eSIM ou número virtual, como o da Salvy),"
   echo "  com o WhatsApp Business já ativado nele num celular. Não use o seu número pessoal."
@@ -491,6 +546,7 @@ etapa_servico() {
   titulo 11 "Deixar os agentes ligados 24 horas"
   porque "como serviço do sistema, cada agente liga sozinho quando a VPS reinicia e volta se cair."
   local p unit
+  if ! feito agentes; then aviso "Os agentes ainda não foram instalados; o serviço fica para depois."; adiar; return 0; fi
   for p in "${AGENTES[@]}"; do
     unit="/etc/systemd/system/imersao-$p.service"
     cat >"$unit.novo" <<EOF
@@ -579,7 +635,9 @@ etapa_conferir() {
 etapa_onboarding() {
   titulo 13 "Onboarding dos agentes"
   porque "é a conversa em que cada agente aprende sobre o seu negócio e preenche os arquivos da sua marca."
-  if [ -x "$PACOTE_DIR/onboarding/rodar.sh" ]; then
+  if [ -x "$PACOTE_DIR/onboarding/rodar.sh" ] && [ "$AGENTE" = 1 ]; then
+    humano onboarding "conversar com os agentes no onboarding sobre o seu negócio"
+  elif [ -x "$PACOTE_DIR/onboarding/rodar.sh" ]; then
     "$PACOTE_DIR/onboarding/rodar.sh" "$U" "$MARCA_DIR"
   else
     aviso "O onboarding guiado será liberado na próxima aula. Quando sair, rode: sudo instalar-imersao --so onboarding"
@@ -594,9 +652,53 @@ rodar_etapa() {
     printf '%s✔ %s%s já concluída em %s\n' "$VERDE" "$e" "$R" "$(cat "$ESTADO/$e.ok")"
     return 0
   fi
-  ADIADA=0
+  ADIADA=0; NAO_MARCAR=0
   "etapa_$e"
-  if [ "$ADIADA" = 1 ]; then PENDENTES+=("$e"); else marcar "$e"; fi
+  if [ "$ADIADA" = 1 ]; then PENDENTES+=("$e"); elif [ "$NAO_MARCAR" = 0 ]; then marcar "$e"; fi
+}
+
+# Fim do modo agente: o que a PESSOA roda no próprio terminal, com o comando exato.
+# Tokens, senhas e logins só são digitados ali, nunca no chat do agente.
+resumo_agente() {
+  if [ ${#HUMANO[@]} -eq 0 ] && [ ${#OPCIONAL[@]} -eq 0 ]; then echo; echo "PENDENTES_DA_PESSOA="; return 0; fi
+  local ip p porta="" quem=root item n=0 ssh_pend=0 e d
+  ip=$(ip_publico); p=$(porta_ssh); [ "$p" = 22 ] || porta="-p $p "
+  [ -f /etc/ssh/sshd_config.d/00-imersao.conf ] && quem="$U"
+  for item in "${HUMANO[@]}"; do [ "${item%%|*}" != ssh ] || ssh_pend=1; done
+  local cmd="ssh -t ${porta}${quem}@${ip}"
+  echo
+  echo "${B}=== Para a pessoa fazer no PRÓPRIO terminal (não no chat do agente) ===${R}"
+  if [ ${#HUMANO[@]} -gt 0 ]; then
+    echo "Estes passos pedem login, token ou um teste de acesso. Por segurança, nenhum deles passa pelo agente."
+    echo
+    echo "Jeito mais simples: um comando só, que faz tudo em sequência e pula o que já está pronto:"
+    echo "   $cmd 'sudo instalar-imersao'"
+    echo
+    echo "Ou um de cada vez, nesta ordem:"
+    for item in "${HUMANO[@]}"; do   # o teste do SSH vai por último: depois dele o root não entra mais
+      e="${item%%|*}"; d="${item#*|}"; [ "$e" != ssh ] || continue
+      n=$((n + 1)); echo "   $n. Para $d:"; echo "      $cmd 'sudo instalar-imersao --so $e'"
+    done
+    if [ "$ssh_pend" = 1 ]; then
+      n=$((n + 1))
+      echo "   $n. Para testar a entrada com a sua chave e só então desligar a senha e o root:"
+      echo "      $cmd 'sudo instalar-imersao --so ssh'"
+      echo "      Depois deste passo o root não entra mais. Use:  ssh -t ${porta}${U}@${ip}"
+      cmd="ssh -t ${porta}${U}@${ip}"
+    fi
+    n=$((n + 1)); echo "   $n. No fim, a conferência (cada agente responde e manda um oi no seu Telegram):"
+    echo "      $cmd 'sudo instalar-imersao'"
+  fi
+  for item in "${OPCIONAL[@]}"; do
+    e="${item%%|*}"; d="${item#*|}"
+    echo
+    echo "Opcional: para $d:"
+    echo "   $cmd 'sudo instalar-imersao --so $e'"
+  done
+  local lista="" x
+  for x in "${HUMANO[@]}"; do lista+="${x%%|*},"; done
+  echo
+  echo "PENDENTES_DA_PESSOA=${lista%,}"
 }
 
 main() {
@@ -606,13 +708,18 @@ main() {
       --so) so="$2"; shift 2 ;;
       --refazer) refazer="$2"; shift 2 ;;
       --pacote) PACOTE_LOCAL="$(readlink -f "$2")"; shift 2 ;;
+      --agente) AGENTE=1; shift ;;
+      --cerebro) case "${2:-}" in claude|chatgpt) CEREBRO_ARG="$2" ;; *) erro "Use --cerebro claude ou --cerebro chatgpt" ;; esac; shift 2 ;;
       --listar) for e in "${ETAPAS[@]}"; do feito "$e" && echo "✔ $e" || echo "· $e"; done; exit 0 ;;
-      -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
+      -h|--help) sed -n '2,29p' "$0"; exit 0 ;;
       *) erro "Opção desconhecida: $1 (use --help)" ;;
     esac
   done
   [ "$(id -u)" -eq 0 ] || erro "Rode como root: sudo bash instalar.sh"
-  [ -r "$TTY" ] || erro "Este instalador faz perguntas e precisa de um terminal (rode pelo SSH, não por automação)."
+  if [ "$AGENTE" = 0 ] && ! tem_terminal; then
+    AGENTE=1
+    echo "Sem terminal interativo (parece um agente rodando o instalador): ligando o modo agente."
+  fi
   install -d -m 700 "$ESTADO"; touch "$LOG"; chmod 600 "$LOG"
   # Guarda uma cópia fixa: depois que o root é trancado, o aluno roda como hermes com "sudo instalar-imersao".
   if [ -f "$0" ] && [ "$(readlink -f "$0")" != /usr/local/sbin/instalar-imersao ]; then
@@ -620,6 +727,7 @@ main() {
   fi
   PENDENTES=()
   echo "${B}Instalador da Imersão Arquiteto de Agentes${R}  (Hermes $HERMES_VERSAO)"
+  [ "$AGENTE" = 0 ] || echo "Modo agente: não pergunto nada. O que precisa de você (login, token, teste de acesso) fica para o fim."
   echo "Registro de tudo em $LOG (sem nenhum token)."
   for e in ${refazer:+$refazer}; do
     rm -f "$ESTADO/$e.ok"
@@ -647,6 +755,7 @@ main() {
     echo "${B}${AMAR}Quase lá.${R} Ficou pendente: ${PENDENTES[*]}"
     echo "Resolva o que o aviso pediu e rode de novo: sudo instalar-imersao  (o que já está pronto é pulado)"
   fi
+  [ "$AGENTE" = 0 ] || resumo_agente
   [ -f /var/run/reboot-required ] && echo "Uma atualização pediu reinício. Quando puder: sudo reboot (os agentes voltam sozinhos)."
   return 0
 }

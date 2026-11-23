@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Confere, de fora, uma VPS em que o instalador já rodou. Não muda nada na VPS (só o --reiniciar reinicia).
 # Uso: testes/conferir-vps.sh <ip> <chave-ssh> [--reiniciar]
-# Antes, na VPS nova (Ubuntu 24.04), como root:
-#   curl -fsSL https://redpro.com.br/instalar -o instalar.sh && bash instalar.sh
+# Antes, na VPS nova (Ubuntu 24.04), pelo Console web da Hostinger (root):
+#   curl -fsSL "https://redpro.com.br/instalar?k=CHAVE" -o instalar.sh && bash instalar.sh   (CHAVE: página /configurar-vps)
 set -uo pipefail
 IP="${1:?ip}"; CHAVE="${2:?chave ssh}"; REINICIAR="${3:-}"
 SSHO=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o BatchMode=yes)
