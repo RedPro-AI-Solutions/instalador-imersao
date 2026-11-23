@@ -42,6 +42,35 @@ else
 fi
 confere "nenhum token no registro" h "! sudo -n grep -Eq '[0-9]{8,10}:AA[A-Za-z0-9_-]{30,}|sk-[A-Za-z0-9_-]{16,}' /var/log/imersao-instalador.log"
 
+echo "== Carga: os 3 agentes respondendo ao mesmo tempo (plano recomendado: KVM 2)"
+h "nproc; free -m | awk '/^Mem:/{print \$2}'" 2>/dev/null | paste -sd' ' | { read -r cpus memtot; echo "  · máquina: ${cpus:-?} vCPU, ${memtot:-?} MB de RAM"; }
+# Amostra RAM (usada e disponível), swap e CPU a cada 1 s enquanto os 3 respondem em paralelo; mostra o pico.
+r=$(h 'set -u; out=$(mktemp -d); t0=$(date +%s)
+  for p in mkt-atendimento mkt-conteudo mkt-landing; do
+    ( timeout 240 ~/.local/bin/hermes -p $p -z "Em três frases, explique o que você faz e dê um exemplo de tarefa." > $out/$p 2>&1 ) &
+  done
+  picou=0; minav=999999; picsw=0; picpu=0
+  set -- $(free -m | awk "/^Mem:/{print \$3} /^Swap:/{print \$3}"); base=$1; basesw=${2:-0}
+  read -r _ a b c d e f g _ < /proc/stat; ant=$((a+b+c+d+e+f+g)); antid=$((d+e))
+  while [ -n "$(jobs -r)" ]; do
+    sleep 1
+    read -r _ a b c d e f g _ < /proc/stat; tot=$((a+b+c+d+e+f+g)); id=$((d+e))
+    cpu=$(( 100 * ((tot-ant) - (id-antid)) / ((tot-ant) > 0 ? (tot-ant) : 1) )); ant=$tot; antid=$id
+    set -- $(free -m | awk "/^Mem:/{print \$3, \$7} /^Swap:/{print \$3}")
+    [ "$1" -gt "$picou" ] && picou=$1; [ "$2" -lt "$minav" ] && minav=$2; sw=$(( ${3:-0} - basesw )); [ "$sw" -gt "$picsw" ] && picsw=$sw; [ "$cpu" -gt "$picpu" ] && picpu=$cpu
+  done
+  wait
+  bons=0; for p in mkt-atendimento mkt-conteudo mkt-landing; do [ -s $out/$p ] && ! grep -q "⚠️" $out/$p && bons=$((bons+1)); done
+  oom=$(sudo -n journalctl -k --since "-10min" 2>/dev/null | grep -ci "out of memory\|oom-kill" || true)
+  echo "$bons $picou $(( picou - base )) $minav $picsw $picpu $(( $(date +%s) - t0 )) ${oom:-0}"; rm -rf $out' 2>/dev/null)
+read -r bons picou subiu minav picsw picpu seg oom <<< "${r:-0 0 0 0 0 0 0 0}"
+echo "  · pico de RAM usada ${picou} MB (+${subiu} MB com os 3) · menor RAM livre ${minav} MB · swap +${picsw} MB · pico de CPU ${picpu}% · ${seg} s"
+[ "$bons" = 3 ] && passa "os 3 responderam juntos" || cai "só $bons de 3 responderam juntos"
+[ "$minav" -ge 1024 ] && passa "sobrou 1 GB ou mais de RAM no pico" || cai "RAM livre caiu para ${minav} MB no pico (menos de 1 GB)"
+[ "$picsw" -le 256 ] && passa "sem uso relevante de swap" || cai "o swap cresceu ${picsw} MB durante o teste"
+[ "$oom" = 0 ] && passa "nenhum processo morto por falta de memória" || cai "o kernel matou processo por falta de memória"
+[ "$seg" -le 180 ] && passa "os 3 terminaram em até 3 min" || cai "levou ${seg} s para os 3 terminarem"
+
 if [ "$REINICIAR" = --reiniciar ]; then
   echo "== Reinício"
   h "sudo -n systemctl reboot" 2>/dev/null || true
