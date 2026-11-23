@@ -62,7 +62,24 @@ if [ -t 1 ]; then B=$'\e[1m'; VERDE=$'\e[32m'; AMAR=$'\e[33m'; VERM=$'\e[31m'; A
 else B=""; VERDE=""; AMAR=""; VERM=""; AZUL=""; R=""; fi
 
 log()    { printf '%s %s\n' "$(date '+%F %T')" "$*" >>"$LOG"; }
-titulo() { printf '\n%s━━━ Etapa %s/%s · %s%s\n' "$B$AZUL" "$1" "${#ETAPAS[@]}" "$2" "$R"; log "ETAPA $2"; }
+MARCA="RedPro Academy"
+CURSO="Imersão Arquiteto de Agentes"
+titulo() { printf '\n%s━━━ Etapa %s/%s · %s%s  %s· %s%s\n' "$B$AZUL" "$1" "${#ETAPAS[@]}" "$2" "$R" "$AZUL" "$MARCA" "$R"; log "ETAPA $2"; }
+fim_etapa() { printf '  %s── %s · etapa %s/%s concluída%s\n' "$AZUL" "$MARCA" "$1" "${#ETAPAS[@]}" "$R"; }
+# O que o aluno precisa guardar. Segredo (token, senha) vai só no gerenciador de senhas, nunca em documento.
+guarde()   { printf '  %s📌 Guarde isto no seu Google Docs:%s %s\n' "$B$AMAR" "$R" "$*"; }
+guarde_segredo() { printf '  %s🔐 Isto é segredo: guarde só no seu gerenciador de senhas, nunca em documento:%s %s\n' "$B$AMAR" "$R" "$*"; }
+banner() {
+  printf '\n%s' "$B$AZUL"
+  printf '  +--------------------------------------------------+\n'
+  printf '  |                                                  |\n'
+  printf '  |   R E D P R O   A C A D E M Y                    |\n'
+  printf '  |   Imersão Arquiteto de Agentes                   |\n'
+  printf '  |   Instalador oficial do Squad de agentes         |\n'
+  printf '  |                                                  |\n'
+  printf '  +--------------------------------------------------+\n'
+  printf '%s' "$R"
+}
 porque() { printf '%s  Por quê:%s %s\n' "$AMAR" "$R" "$*"; }
 faz()    { printf '  → %s\n' "$*"; log "$*"; }
 ok()     { printf '  %s✔ %s%s\n' "$VERDE" "$*" "$R"; log "OK $*"; }
@@ -178,7 +195,7 @@ etapa_usuario() {
   if [ -s /root/.ssh/authorized_keys ] && ssh-keygen -lf /root/.ssh/authorized_keys >/dev/null 2>&1; then
     echo "  Achei uma chave que você cadastrou na Hostinger: $(ssh-keygen -lf /root/.ssh/authorized_keys | head -1 | awk '{print $2, $3}')"
     if [ "$AGENTE" = 1 ] || sim "Usar essa mesma chave para o usuário hermes?"; then
-      cat /root/.ssh/authorized_keys >>"$ak"; ok "Chave copiada"; return
+      cat /root/.ssh/authorized_keys >>"$ak"; ok "Chave copiada"; guarde "o usuário da VPS é $U e o IP é $(ip_publico)"; return
     fi
   fi
   if [ "$AGENTE" = 1 ]; then humano usuario "cadastrar a sua chave SSH pública (a VPS não tem nenhuma)"; return 0; fi
@@ -193,6 +210,7 @@ etapa_usuario() {
   done
   cat "$tmp" >>"$ak"; rm -f "$tmp"
   ok "Chave cadastrada: $(ssh-keygen -lf "$ak" | tail -1 | awk '{print $2}')"
+  guarde "o usuário da VPS é $U e o IP é $(ip_publico)"
 }
 
 # =============================================================================
@@ -257,6 +275,7 @@ EOF
   if ! sshd -t 2>>"$LOG"; then rm -f "$conf"; erro "A configuração do SSH não passou no teste. Nada foi alterado."; fi
   systemctl reload ssh 2>/dev/null || systemctl reload sshd
   ok "Pronto. Daqui em diante entre sempre com: ssh $U@$ip"
+  guarde "o comando para entrar na VPS: ssh $U@$ip (usuário $U, IP $ip)"
   aviso "O root não entra mais direto. Para administrar, use o $U e o comando sudo."
 }
 
@@ -425,6 +444,7 @@ etapa_telegram() {
     echo "  ${B}Bot do agente ${NOME_AGENTE[$p]}${R}"
     echo "  No Telegram, fale com @BotFather → /newbot → dê um nome → ele te entrega um token."
     echo "  Ainda não criou o bot? Digite pular: os outros passos seguem e depois você roda: sudo instalar-imersao --so telegram"
+    guarde_segredo "o token do bot (o instalador não mostra nem grava ele em lugar nenhum além da VPS)"
     usuario=""
     while :; do
       token=$(segredo "Cole o token do bot (não aparece na tela):")
@@ -435,6 +455,7 @@ etapa_telegram() {
     done
     if [ -z "$usuario" ]; then aviso "Bot do agente ${NOME_AGENTE[$p]} ficou para depois."; unset token; adiar; continue; fi
     ok "Bot @$usuario conferido"
+    guarde "o bot do agente ${NOME_AGENTE[$p]} é @$usuario (t.me/$usuario)"
     systemctl stop "imersao-$p" 2>/dev/null || true   # o serviço ligado "come" as mensagens que vamos ler agora
     tg "$token" deleteWebhook >/dev/null 2>&1 || true
     tg_limpar "$token"   # descarta mensagens antigas: só vale o /start mandado agora
@@ -655,6 +676,8 @@ rodar_etapa() {
   ADIADA=0; NAO_MARCAR=0
   "etapa_$e"
   if [ "$ADIADA" = 1 ]; then PENDENTES+=("$e"); elif [ "$NAO_MARCAR" = 0 ]; then marcar "$e"; fi
+  local i n=0; for i in "${!ETAPAS[@]}"; do [ "${ETAPAS[$i]}" = "$e" ] && n=$((i + 1)); done
+  [ "$ADIADA" = 1 ] || [ "$NAO_MARCAR" = 1 ] || fim_etapa "$n"
 }
 
 # Fim do modo agente: o que a PESSOA roda no próprio terminal, com o comando exato.
@@ -726,7 +749,8 @@ main() {
     install -m 755 "$0" /usr/local/sbin/instalar-imersao
   fi
   PENDENTES=()
-  echo "${B}Instalador da Imersão Arquiteto de Agentes${R}  (Hermes $HERMES_VERSAO)"
+  banner
+  echo "  Hermes $HERMES_VERSAO · pacote dos agentes $PACOTE_VERSAO"
   [ "$AGENTE" = 0 ] || echo "Modo agente: não pergunto nada. O que precisa de você (login, token, teste de acesso) fica para o fim."
   echo "Registro de tudo em $LOG (sem nenhum token)."
   for e in ${refazer:+$refazer}; do
@@ -755,6 +779,10 @@ main() {
     echo "${B}${AMAR}Quase lá.${R} Ficou pendente: ${PENDENTES[*]}"
     echo "Resolva o que o aviso pediu e rode de novo: sudo instalar-imersao  (o que já está pronto é pulado)"
   fi
+  echo
+  echo "${B}${AZUL}$MARCA · $CURSO${R}"
+  echo "Próximo passo: volte para o manual da $MARCA e siga de onde parou."
+  guarde "o IP da VPS ($(ip_publico)), o usuário $U e o nome dos bots dos seus agentes"
   [ "$AGENTE" = 0 ] || resumo_agente
   [ -f /var/run/reboot-required ] && echo "Uma atualização pediu reinício. Quando puder: sudo reboot (os agentes voltam sozinhos)."
   return 0
