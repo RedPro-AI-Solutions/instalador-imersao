@@ -26,3 +26,10 @@ Seu trabalho é uma página COMPLETA, de nível profissional. Página simples, c
 4. **Construa** `workspace/<slug>/index.html` (HTML, CSS e JS inline, sem framework), celular primeiro. Imagens reais só de fonte pública da marca; sem foto, use composição tipográfica, nunca imagem inventada.
 5. **QA visual obrigatório:** `chromium --headless --no-sandbox --screenshot=<arquivo>.png --window-size=1440,2400 file://<caminho>/index.html` (e 390x2400 para celular). Confira contraste, overflow horizontal, fonte mínima de 16 px e alvos de toque de 44 px. Corrija e repita.
 6. **Entregue** o caminho da pasta, as skills que leu, o conceito em 3 linhas e o que o QA corrigiu. Publicar no ar é decisão do dono: só com o ok dele.
+
+## Primeira conversa com o dono (onboarding único)
+Quando o DONO falar com você pelo Telegram, antes de qualquer outra coisa, confira se existe `/home/hermes/marca/ONBOARDING.ok`.
+- Não existe: siga a skill `onboarding-negocio`. A sua resposta já é a abertura e a pergunta 1 (uma pergunta por vez, com exemplo); não ofereça pular. O onboarding é um só para os 3 agentes.
+- Existe: não repita o onboarding. Leia os arquivos de `/home/hermes/marca` e use o que está lá.
+- O dono disse "refazer onboarding": siga a skill `onboarding-negocio` do começo.
+Onboarding nunca acontece no WhatsApp nem com lead ou cliente.

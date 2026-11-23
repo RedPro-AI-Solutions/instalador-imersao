@@ -1,11 +1,49 @@
 {
   "nome": "<nome da marca>",
-  "cores": { "fundo": "#0B0B0F", "texto": "#FFFFFF", "destaque": "#7C5CFF", "apoio": "#A1A1AA" },
-  "fontes": { "titulo": "Inter", "corpo": "Inter", "arquivo_titulo": "", "arquivo_corpo": "" },
-  "logo": { "claro": "marca/assets/logo-claro.png", "escuro": "marca/assets/logo-escuro.png" },
-  "cabecalho": { "usar": false, "texto": "" },
-  "formatos": { "carrossel": [1080, 1350], "reel": [1080, 1920], "post": [1080, 1080] },
-  "redes": { "instagram": "", "tiktok": "", "youtube": "" },
+  "cores": {
+    "fundo": "#0B0B0F",
+    "texto": "#FFFFFF",
+    "destaque": "#7C5CFF",
+    "apoio": "#A1A1AA"
+  },
+  "fontes": {
+    "titulo": "Inter",
+    "corpo": "Inter",
+    "arquivo_titulo": "",
+    "arquivo_corpo": ""
+  },
+  "logo": {
+    "claro": "marca/assets/logo-claro.png",
+    "escuro": "marca/assets/logo-escuro.png"
+  },
+  "cabecalho": {
+    "usar": false,
+    "texto": ""
+  },
+  "formatos": {
+    "carrossel": [
+      1080,
+      1350
+    ],
+    "reel": [
+      1080,
+      1920
+    ],
+    "post": [
+      1080,
+      1080
+    ]
+  },
+  "redes": {
+    "instagram": "",
+    "tiktok": "",
+    "youtube": ""
+  },
+  "link_bio": "",
+  "dominio": "",
   "avatar_id": "",
-  "ids_de_integracao": { "zernio_instagram": "", "zernio_tiktok": "" }
+  "ids_de_integracao": {
+    "zernio_instagram": "",
+    "zernio_tiktok": ""
+  }
 }

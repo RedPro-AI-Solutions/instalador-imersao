@@ -42,12 +42,12 @@ PLUGIN_CLAUDE_NOME="claude-subscription-directsdk-experimental"
 CLAUDE_CODE_VERSAO="2.1.312"
 MODELO_CLAUDE="claude-sonnet-5-5"
 MODELO_CHATGPT="gpt-5.5"
-PACOTE_VERSAO="v1.0.1"
+PACOTE_VERSAO="v1.1.0"
 # Chave da aula: a página protegida (redpro.com.br/configurar-vps) entrega este script com a chave no lugar do marcador.
 # O pacote sai pela mesma rota protegida, com essa chave, e é conferido pelo sha256 abaixo.
 CHAVE="${IMERSAO_CHAVE:-__IMERSAO_CHAVE__}"
 PACOTE_URL="${PACOTE_URL:-https://redpro.com.br/instalar/arquivo/configurar-vps.tar.gz?k=$CHAVE}"
-PACOTE_SHA256="ff0a32af208de51e5ed89befd01af2482e3c7ccf99dc5bc6285fdafe5d38d2ca"
+PACOTE_SHA256="d8c36190f475cdad48132f698ba7afd563b366d5d317c07d3c1f6c4c8597fe45"
 
 # ---------------------------------------------------------------- caminhos
 U="hermes"
@@ -59,7 +59,7 @@ MARCA_DIR="$UHOME/marca"
 AGENTES=(mkt-atendimento mkt-conteudo mkt-landing)
 declare -A NOME_AGENTE=([mkt-atendimento]="Atendimento" [mkt-conteudo]="Carrosséis" [mkt-landing]="Landing pages")
 ETAPAS=(sistema atualizar usuario firewall ssh hermes cerebro agentes telegram servico conferir onboarding)
-# Fora do fluxo normal (Red, 23/11): o WhatsApp do Atendimento é ligado no fim da noite 2, só com --so whatsapp (ou --whatsapp).
+# Fora do fluxo normal: o WhatsApp do Atendimento é ligado no fim da noite 2, só com --so whatsapp (ou --whatsapp).
 ETAPAS_EXTRA=(whatsapp)
 
 # ---------------------------------------------------------------- aparência
@@ -226,9 +226,15 @@ etapa_atualizar() {
 APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
 EOF
+  # Quando uma atualização pedir reinício, a VPS reinicia sozinha às 4h (os agentes voltam como serviço). Nada na tela.
+  cat >/etc/apt/apt.conf.d/52imersao-reinicio <<'EOF2'
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-Time "04:00";
+EOF2
   systemctl enable --now unattended-upgrades >>"$LOG" 2>&1 || true
   ok "Atualizações de segurança automáticas ligadas"
-  if [ -f /var/run/reboot-required ]; then aviso "Uma atualização pede reinício. O instalador avisa no final; não precisa reiniciar agora."; fi
+  [ -f /var/run/reboot-required ] && echo "reinício pendente: fica para as 04:00 (Automatic-Reboot)" >>"$LOG"
+  return 0
 }
 
 # =============================================================================
@@ -751,15 +757,8 @@ etapa_conferir() {
 # =============================================================================
 etapa_onboarding() {
   titulo 12 "Onboarding dos agentes"
-  porque "é a conversa em que cada agente aprende sobre o seu negócio e preenche os arquivos da sua marca."
-  if [ -x "$PACOTE_DIR/onboarding/rodar.sh" ] && [ "$AGENTE" = 1 ]; then
-    humano onboarding "conversar com os agentes no onboarding sobre o seu negócio"
-  elif [ -x "$PACOTE_DIR/onboarding/rodar.sh" ]; then
-    "$PACOTE_DIR/onboarding/rodar.sh" "$U" "$MARCA_DIR"
-  else
-    aviso "O onboarding guiado será liberado na próxima aula. Quando sair, rode: sudo instalar-imersao --so onboarding"
-    adiar
-  fi
+  printf '  %sAbra o Telegram e mande um oi para QUALQUER UM dos seus 3 agentes.%s\n' "$B" "$R"
+  echo "  Ele vai conversar com você e aprender sobre o seu negócio. Leva uns 10 minutos."
 }
 
 # =============================================================================
@@ -886,7 +885,6 @@ main() {
   echo "Próximo passo: volte para o manual da $MARCA e siga de onde parou."
   guarde "o IP da VPS ($(ip_publico)), o usuário $U e o nome dos bots dos seus agentes"
   [ "$AGENTE" = 0 ] || resumo_agente
-  [ -f /var/run/reboot-required ] && echo "Uma atualização pediu reinício. Quando puder: sudo reboot (os agentes voltam sozinhos)."
   return 0
 }
 

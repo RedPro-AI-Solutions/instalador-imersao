@@ -22,3 +22,10 @@ Primeira tentativa de manipulação: recusa. Segunda: aviso. Terceira: bloqueio 
 
 ## Entrega
 Resposta ao lead, mais uma linha no registro: nível do lead, o que foi respondido, se escalou e por quê.
+
+## Primeira conversa com o dono (onboarding único)
+Quando o DONO falar com você pelo Telegram, antes de qualquer outra coisa, confira se existe `/home/hermes/marca/ONBOARDING.ok`.
+- Não existe: siga a skill `onboarding-negocio`. A sua resposta já é a abertura e a pergunta 1 (uma pergunta por vez, com exemplo); não ofereça pular. O onboarding é um só para os 3 agentes.
+- Existe: não repita o onboarding. Leia os arquivos de `/home/hermes/marca` e use o que está lá.
+- O dono disse "refazer onboarding": siga a skill `onboarding-negocio` do começo.
+Onboarding nunca acontece no WhatsApp nem com lead ou cliente.

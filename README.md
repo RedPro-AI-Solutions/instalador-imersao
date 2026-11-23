@@ -2,13 +2,14 @@
 
 Este instalador prepara, numa VPS Ubuntu novinha, tudo o que o seu Squad de agentes precisa para funcionar 24 horas:
 
-1. **Blinda o servidor.** Cria o usuário `hermes` com acesso por chave SSH e liga o firewall (só a porta do SSH fica aberta). Também ativa o fail2ban e as atualizações de segurança automáticas. O login por senha e o acesso do root só são desligados **depois** que você confirma que consegue entrar com a chave.
+1. **Blinda o servidor.** Cria o usuário `hermes` com acesso por chave SSH e liga o firewall (só a porta do SSH fica aberta). Também ativa o fail2ban e as atualizações de segurança automáticas (quando uma delas pede reinício, a VPS reinicia sozinha às 4h e os agentes voltam sozinhos). O login por senha e o acesso do root só são desligados **depois** que você confirma que consegue entrar com a chave.
 2. **Instala o Hermes** numa versão fixa e testada (v0.22.5).
 3. **Conecta o cérebro** à sua assinatura do Claude (Pro/Max) ou do ChatGPT (Plus/Pro). Não usa chave de API.
 4. **Instala os 3 agentes do Squad**: Atendimento, Carrosséis e Landing pages. Eles vêm com modelos em branco dos arquivos da sua marca.
 5. **Liga um bot do Telegram por agente.** Só você consegue falar com ele.
 6. **Liga o agente de Atendimento ao WhatsApp do negócio** (opcional, fora do fluxo normal: é feito no fim da noite 2 com `sudo instalar-imersao --whatsapp`). É o seu SDR: só ele fica no WhatsApp, conectado por QR code a um número só do negócio, sem selo de robô, sem grupos e sem acesso a arquivos ou ao terminal da VPS.
 7. **Deixa tudo como serviço.** Os agentes voltam sozinhos se a VPS reiniciar.
+8. **Onboarding único.** No fim, você manda um oi no Telegram para qualquer um dos 3 agentes. Ele entrevista você sobre o negócio (uns 10 minutos), grava tudo em `/home/hermes/marca` e os outros dois já ficam sabendo: ninguém repete. Para refazer, diga "refazer onboarding" a qualquer um deles.
 
 A cada etapa, o instalador explica em português o que está fazendo e por quê.
 

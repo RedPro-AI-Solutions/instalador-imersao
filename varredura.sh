@@ -7,7 +7,7 @@ ARQS=$(git ls-files 2>/dev/null; git ls-files --others --exclude-standard 2>/dev
 [ -n "$ARQS" ] || ARQS=$(find . -type f -not -path './.git/*' | sed 's|^\./||')
 ARQS=$(echo "$ARQS" | grep -vE '^(varredura\.sh|.*\.tar\.gz)$' | sort -u)
 # Únicas menções permitidas: o endereço público aprovado do instalador.
-PERMITIDO='@example\.com|@company\.com|\*\*Red\*\* \(`#f44336|redpro\.com\.br/instalar|github\.com/RedPro-AI-Solutions/instalador-imersao|RedPro-AI-Solutions/instalador-imersao|raw\.githubusercontent\.com/RedPro-AI-Solutions'
+PERMITIDO='@example\.com|@company\.com|\*\*Red\*\* \(`#f44336|redpro\.com\.br/instalar|redpro\.com\.br/configurar-vps|RedPro AI Academy|github\.com/RedPro-AI-Solutions/instalador-imersao|RedPro-AI-Solutions/instalador-imersao|raw\.githubusercontent\.com/RedPro-AI-Solutions'
 achou=0
 checa() { # rótulo, flags do grep, padrão
   local r; r=$(echo "$ARQS" | xargs -d '\n' grep -nHE $2 -- "$3" 2>/dev/null | grep -vE "$PERMITIDO" || true)
