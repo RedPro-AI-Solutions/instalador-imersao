@@ -7,7 +7,8 @@ Este instalador prepara, numa VPS Ubuntu novinha, tudo o que o seu Squad de agen
 3. **Conecta o cérebro** à sua assinatura do Claude (Pro/Max) ou do ChatGPT (Plus/Pro). Não usa chave de API.
 4. **Instala os 3 agentes do Squad**: Atendimento, Carrosséis e Landing pages. Eles vêm com modelos em branco dos arquivos da sua marca.
 5. **Liga um bot do Telegram por agente.** Só você consegue falar com ele.
-6. **Deixa tudo como serviço.** Os agentes voltam sozinhos se a VPS reiniciar.
+6. **Liga o agente de Atendimento ao WhatsApp do negócio** (opcional). É o seu SDR: só ele fica no WhatsApp, conectado por QR code a um número só do negócio, sem selo de robô, sem grupos e sem acesso a arquivos ou ao terminal da VPS.
+7. **Deixa tudo como serviço.** Os agentes voltam sozinhos se a VPS reiniciar.
 
 A cada etapa, o instalador explica em português o que está fazendo e por quê.
 
@@ -25,6 +26,7 @@ Depois que o root for trancado, entre como `hermes` e use:
 sudo instalar-imersao            # roda de novo e pula o que já está pronto
 sudo instalar-imersao --listar   # mostra as etapas prontas e as pendentes
 sudo instalar-imersao --so telegram      # roda só uma etapa
+sudo instalar-imersao --so whatsapp      # liga o Atendimento ao WhatsApp do negócio
 sudo instalar-imersao --refazer cerebro  # refaz uma etapa já concluída
 ```
 
@@ -42,5 +44,6 @@ Skills de terceiros e suas licenças: veja `CREDITOS.md`.
 
 - `instalar.sh`: o instalador.
 - `pacote/`: os agentes e os modelos de marca.
+- `sincronizar-perfis.sh`: traz as versões novas dos 3 perfis (SOUL, skills, golden, scripts) para `pacote/agentes/`.
 - `construir-pacote.sh`: monta o `pacote-squad.tar.gz` da release.
 - `varredura.sh`: recusa dados pessoais, chaves e marcas. Roda antes de cada push e dentro do `construir-pacote.sh`.

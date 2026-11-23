@@ -14,7 +14,7 @@
 #     --pacote <arquivo>  usa um pacote .tar.gz local em vez de baixar
 #     --listar            mostra as etapas e o que já está pronto
 #  Etapas: sistema atualizar usuario firewall ssh hermes cerebro agentes
-#          telegram servico conferir onboarding
+#          telegram whatsapp servico conferir onboarding
 #
 #  Segurança: nenhum token aparece na tela nem vai para o log. Tokens são
 #  digitados escondidos e guardados em arquivo que só o usuário hermes lê.
@@ -44,7 +44,7 @@ PACOTE_DIR="/opt/imersao/pacote"
 MARCA_DIR="$UHOME/marca"
 AGENTES=(mkt-atendimento mkt-conteudo mkt-landing)
 declare -A NOME_AGENTE=([mkt-atendimento]="Atendimento" [mkt-conteudo]="Carrosséis" [mkt-landing]="Landing pages")
-ETAPAS=(sistema atualizar usuario firewall ssh hermes cerebro agentes telegram servico conferir onboarding)
+ETAPAS=(sistema atualizar usuario firewall ssh hermes cerebro agentes telegram whatsapp servico conferir onboarding)
 
 # ---------------------------------------------------------------- aparência
 if [ -t 1 ]; then B=$'\e[1m'; VERDE=$'\e[32m'; AMAR=$'\e[33m'; VERM=$'\e[31m'; AZUL=$'\e[36m'; R=$'\e[0m'
@@ -414,8 +414,81 @@ etapa_telegram() {
 }
 
 # =============================================================================
+# Só o agente de Atendimento (o SDR) fica no WhatsApp. Os outros dois ficam só no seu Telegram.
+WA_AGENTE="mkt-atendimento"
+wa_pareado() {
+  local h="$UHOME/.hermes/profiles/$WA_AGENTE" f
+  for f in "$h/platforms/whatsapp/session/creds.json" "$h/whatsapp/session/creds.json"; do
+    [ -f "$f" ] && jq -e '.me.id // empty' "$f" >/dev/null 2>&1 && return 0
+  done
+  return 1
+}
+
+etapa_whatsapp() {
+  titulo 10 "Ligar o agente de Atendimento ao WhatsApp do negócio (opcional)"
+  porque "o Atendimento é o seu SDR: responde quem chama no WhatsApp do negócio e passa para você o que precisa de gente. Só ele fica no WhatsApp."
+  local p="$WA_AGENTE" h="$UHOME/.hermes/profiles/$WA_AGENTE" envf quem py
+  envf="$h/.env"
+  if wa_pareado && [ "$(env_get "$envf" WHATSAPP_ENABLED)" = true ]; then
+    pula "WhatsApp ligado ao agente ${NOME_AGENTE[$p]}"; return 0
+  fi
+  echo "  Você precisa de um número SÓ do negócio (chip, eSIM ou número virtual, como o da Salvy),"
+  echo "  com o WhatsApp Business já ativado nele num celular. Não use o seu número pessoal."
+  if ! sim "Esse número já está com o WhatsApp Business funcionando?"; then
+    aviso "Sem problema. Quando o número estiver pronto, rode: sudo instalar-imersao --so whatsapp"
+    return 0
+  fi
+  # Cópia de segurança do perfil antes de mexer (só configuração; sem sessões).
+  install -d -m 700 -o "$U" -g "$U" "$h/backups"
+  tar -czf "$h/backups/antes-whatsapp-$(date +%Y%m%d-%H%M%S).tar.gz" -C "$h" config.yaml $( [ -f "$envf" ] && echo .env ) 2>>"$LOG" || true
+  chown -R "$U:$U" "$h/backups"; chmod 600 "$h"/backups/*.tar.gz 2>/dev/null || true
+  echo
+  echo "  Quem pode conversar com o Atendimento?"
+  echo "  Aperte Enter para QUALQUER pessoa (seus leads). Para um teste fechado, digite os números"
+  echo "  com 55 + DDD + número, tudo junto, separados por vírgula."
+  quem=$(pergunta "Números (ou Enter para todos):")
+  quem=$(tr -cd '0-9,' <<<"$quem" | sed 's/,,*/,/g; s/^,//; s/,$//')
+  [ -n "$quem" ] || quem='*'
+  env_set "$envf" WHATSAPP_MODE bot
+  env_set "$envf" WHATSAPP_ALLOWED_USERS "$quem"
+  # Sem o selo "Hermes Agent" nas respostas, sem grupos e, para estranhos, só ferramentas seguras
+  # (ler as próprias habilidades e pesquisar na web): ninguém de fora mexe em arquivos ou no terminal.
+  py="$UHOME/.hermes/hermes-agent/venv/bin/python"
+  comoh "$py" - "$h/config.yaml" "$quem" <<'EOF' >>"$LOG" 2>&1 || erro "Não consegui ajustar a configuração do WhatsApp. Veja $LOG."
+import sys, yaml
+f, quem = sys.argv[1], sys.argv[2]
+c = yaml.safe_load(open(f)) or {}
+c.setdefault("whatsapp", {}).update({"reply_prefix": "", "group_policy": "disabled",
+    "unauthorized_dm_behavior": "ignore", "dm_policy": "open" if quem == "*" else "allowlist"})
+c.setdefault("platform_toolsets", {})["whatsapp"] = ["skills", "search"]
+yaml.safe_dump(c, open(f, "w"), allow_unicode=True, sort_keys=False)
+EOF
+  ok "Atendimento configurado para o WhatsApp (${quem/\*/qualquer pessoa})"
+  systemctl stop "imersao-$p" 2>/dev/null || true   # o pareamento usa a mesma sessão do serviço
+  echo
+  echo "  ${B}Agora o QR code.${R} Vai aparecer um quadrado na tela. No celular do número do negócio:"
+  echo "  WhatsApp Business → três pontinhos (ou Configurações) → Dispositivos conectados → Conectar dispositivo"
+  echo "  → aponte a câmera para o quadrado. Se a tela for pequena, diminua o zoom do terminal (Ctrl e -)."
+  echo "  Se aparecer uma pergunta em inglês com [y/N], só aperte Enter."
+  pergunta "Pronto para ver o QR? Aperte Enter." >/dev/null
+  comoh "$UHOME/.local/bin/hermes" -p "$p" whatsapp <"$TTY" >"$TTY" 2>&1 || true
+  if wa_pareado; then
+    env_set "$envf" WHATSAPP_ENABLED true
+    ok "WhatsApp do negócio conectado ao agente ${NOME_AGENTE[$p]}"
+    if [ -f "/etc/systemd/system/imersao-$p.service" ]; then
+      systemctl restart "imersao-$p"; sleep 6; ok "Agente ${NOME_AGENTE[$p]} religado com o WhatsApp"
+    fi
+    echo "  Teste: de OUTRO celular, mande um oi para o número do negócio. O Atendimento responde."
+  else
+    aviso "O WhatsApp não confirmou a conexão. Rode de novo: sudo instalar-imersao --so whatsapp"
+    [ -f "/etc/systemd/system/imersao-$p.service" ] && systemctl start "imersao-$p" || true
+    adiar
+  fi
+}
+
+# =============================================================================
 etapa_servico() {
-  titulo 10 "Deixar os agentes ligados 24 horas"
+  titulo 11 "Deixar os agentes ligados 24 horas"
   porque "como serviço do sistema, cada agente liga sozinho quando a VPS reinicia e volta se cair."
   local p unit
   for p in "${AGENTES[@]}"; do
@@ -468,7 +541,7 @@ servico_firme() {
 
 # =============================================================================
 etapa_conferir() {
-  titulo 11 "Conferência final"
+  titulo 12 "Conferência final"
   porque "instalação só está pronta quando cada agente responde de verdade."
   local p falhas=0 resp rc envf token tid
   for p in "${AGENTES[@]}"; do
@@ -494,12 +567,17 @@ etapa_conferir() {
       falhas=$((falhas+1))
     fi
   done
+  if wa_pareado && [ "$(env_get "$UHOME/.hermes/profiles/$WA_AGENTE/.env" WHATSAPP_ENABLED)" = true ]; then
+    ok "WhatsApp do negócio ligado ao agente ${NOME_AGENTE[$WA_AGENTE]}"
+  else
+    printf '  · WhatsApp do Atendimento ainda não ligado (opcional): sudo instalar-imersao --so whatsapp\n'
+  fi
   [ "$falhas" -eq 0 ] || adiar
 }
 
 # =============================================================================
 etapa_onboarding() {
-  titulo 12 "Onboarding dos agentes"
+  titulo 13 "Onboarding dos agentes"
   porque "é a conversa em que cada agente aprende sobre o seu negócio e preenche os arquivos da sua marca."
   if [ -x "$PACOTE_DIR/onboarding/rodar.sh" ]; then
     "$PACOTE_DIR/onboarding/rodar.sh" "$U" "$MARCA_DIR"
