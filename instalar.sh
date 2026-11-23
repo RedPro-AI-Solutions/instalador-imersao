@@ -88,6 +88,7 @@ aviso()  { printf '  %s! %s%s\n' "$AMAR" "$*" "$R"; log "AVISO $*"; }
 erro()   { printf '\n%s✖ %s%s\n' "$VERM" "$*" "$R" >&2; log "ERRO $*"; exit 1; }
 
 trap 'erro "Algo falhou na linha $LINENO. Nada foi perdido: rode de novo (sudo instalar-imersao) que o instalador continua de onde parou. Detalhes em $LOG."' ERR
+trap 'trap - ERR; printf "\n%sInstalador interrompido (Ctrl+C). No Console web, Ctrl+C interrompe em vez de copiar: para copiar use Ctrl+Shift+C.%s\nNada foi perdido: rode  sudo instalar-imersao  que ele continua de onde parou.\n" "$AMAR" "$R" >&2; log "INTERROMPIDO"; exit 130' INT
 
 # Perguntas sempre leem do teclado, mesmo quando o script veio por "curl | bash".
 TTY=/dev/tty
@@ -257,6 +258,7 @@ etapa_ssh() {
   echo "  ${B}Teste agora, SEM fechar esta janela:${R}"
   echo "  1. Abra OUTRO terminal no seu computador."
   if [ "${p:-22}" = 22 ]; then echo "  2. Digite:  ssh $U@$ip"; else echo "  2. Digite:  ssh -p $p $U@$ip"; fi
+  echo "     Se você deu outro nome à chave (não é o id_ed25519), diga qual:  ssh -i ~/.ssh/NOME_DA_CHAVE $U@$ip"
   echo "  3. Se entrar sem pedir senha da VPS, deu certo. Pode sair com: exit"
   echo "  Depois de trancado, para rodar o instalador de novo: entre como $U e use  sudo instalar-imersao"
   echo
@@ -753,6 +755,7 @@ main() {
   echo "  Hermes $HERMES_VERSAO · pacote dos agentes $PACOTE_VERSAO"
   [ "$AGENTE" = 0 ] || echo "Modo agente: não pergunto nada. O que precisa de você (login, token, teste de acesso) fica para o fim."
   echo "Registro de tudo em $LOG (sem nenhum token)."
+  [ "$AGENTE" = 1 ] || echo "${AMAR}No Console web da Hostinger, Ctrl+C NÃO copia: ele interrompe o instalador. Para copiar use Ctrl+Shift+C (ou botão direito → Copiar).${R}"
   for e in ${refazer:+$refazer}; do
     rm -f "$ESTADO/$e.ok"
     # Refazer o cérebro deixa trocar de assinatura (Claude <-> ChatGPT) e reaplica nos agentes.
