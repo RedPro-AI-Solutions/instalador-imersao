@@ -63,6 +63,10 @@ trap 'erro "Algo falhou na linha $LINENO. Nada foi perdido: rode de novo (sudo i
 
 # Perguntas sempre leem do teclado, mesmo quando o script veio por "curl | bash".
 TTY=/dev/tty
+# Programas em Node/Bun (login do Claude) não leem teclado por "/dev/tty" atrás do sudo:
+# usa o caminho real do terminal (/dev/pts/N) quando dá para descobrir.
+__t=$(ps -o tty= -p $$ 2>/dev/null | tr -d ' ') || true
+if [[ "$__t" =~ ^(pts/[0-9]+|tty[0-9]*)$ ]] && [ -c "/dev/$__t" ]; then TTY="/dev/$__t"; fi
 pergunta() { local __v; read -r -p "  $1 " __v <"$TTY"; printf '%s' "$__v"; }
 segredo()  { local __v; read -r -s -p "  $1 " __v <"$TTY"; echo >"$TTY"; printf '%s' "$__v"; }
 sim()      { local r; r=$(pergunta "$1 [s/n]"); [[ "${r,,}" =~ ^(s|sim|y|yes)$ ]]; }
@@ -343,7 +347,7 @@ etapa_agentes() {
   baixar_pacote
   if [ -d "$MARCA_DIR" ]; then
     faz "A pasta da sua marca já existe: só acrescento arquivos que faltam, sem mexer no que você escreveu"
-    cp -rn "$PACOTE_DIR/marca/." "$MARCA_DIR/"
+    cp -r --update=none "$PACOTE_DIR/marca/." "$MARCA_DIR/"
   else
     cp -r "$PACOTE_DIR/marca" "$MARCA_DIR"
   fi
@@ -539,7 +543,11 @@ main() {
   PENDENTES=()
   echo "${B}Instalador da Imersão Arquiteto de Agentes${R}  (Hermes $HERMES_VERSAO)"
   echo "Registro de tudo em $LOG (sem nenhum token)."
-  for e in ${refazer:+$refazer}; do rm -f "$ESTADO/$e.ok"; done
+  for e in ${refazer:+$refazer}; do
+    rm -f "$ESTADO/$e.ok"
+    # Refazer o cérebro deixa trocar de assinatura (Claude <-> ChatGPT) e reaplica nos agentes.
+    [ "$e" != cerebro ] || rm -f "$ESTADO/cerebro" "$ESTADO/agentes.ok"
+  done
   if [ -n "$so" ]; then
     [[ " ${ETAPAS[*]} " == *" $so "* ]] || erro "Etapa desconhecida: $so. Etapas: ${ETAPAS[*]}"
     rodar_etapa "$so" forcar
