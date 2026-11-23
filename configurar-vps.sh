@@ -5,7 +5,7 @@
 #  do Squad de marketing: atendimento, carrosséis e landing pages.
 #
 #  Uso (uma linha, como root na VPS, de preferência pelo Console web da Hostinger):
-#     curl -fsSL "https://redpro.com.br/instalar?k=CHAVE" -o instalar.sh && bash instalar.sh
+#     curl -fsSL "https://redpro.com.br/instalar?k=CHAVE" -o configurar-vps.sh && bash configurar-vps.sh
 #  O comando com a CHAVE da aula só aparece em redpro.com.br/configurar-vps, depois da senha.
 #
 #  Rodar de novo é seguro: cada etapa confere o que já está pronto e pula.
@@ -14,6 +14,7 @@
 #     --refazer <etapa>   refaz uma etapa que já tinha sido concluída
 #     --pacote <arquivo>  usa um pacote .tar.gz local em vez de baixar
 #     --listar            mostra as etapas e o que já está pronto
+#     --direto            roda sem parar antes de cada etapa (para quem vai reinstalar)
 #     --agente            modo para agente de terminal (Claude Code, Codex, Gemini CLI):
 #                         faz tudo o que não precisa de você e, no fim, lista os passos com
 #                         login, token ou teste de acesso para você rodar no SEU terminal.
@@ -43,7 +44,7 @@ PACOTE_VERSAO="v1.0.1"
 # Chave da aula: a página protegida (redpro.com.br/configurar-vps) entrega este script com a chave no lugar do marcador.
 # O pacote sai pela mesma rota protegida, com essa chave, e é conferido pelo sha256 abaixo.
 CHAVE="${IMERSAO_CHAVE:-__IMERSAO_CHAVE__}"
-PACOTE_URL="${PACOTE_URL:-https://redpro.com.br/instalar/arquivo/pacote-squad.tar.gz?k=$CHAVE}"
+PACOTE_URL="${PACOTE_URL:-https://redpro.com.br/instalar/arquivo/configurar-vps.tar.gz?k=$CHAVE}"
 PACOTE_SHA256="ff0a32af208de51e5ed89befd01af2482e3c7ccf99dc5bc6285fdafe5d38d2ca"
 
 # ---------------------------------------------------------------- caminhos
@@ -62,9 +63,9 @@ if [ -t 1 ]; then B=$'\e[1m'; VERDE=$'\e[32m'; AMAR=$'\e[33m'; VERM=$'\e[31m'; A
 else B=""; VERDE=""; AMAR=""; VERM=""; AZUL=""; R=""; fi
 
 log()    { printf '%s %s\n' "$(date '+%F %T')" "$*" >>"$LOG"; }
-MARCA="RedPro Academy"
+MARCA="RedPro AI Academy"
 CURSO="Imersão Arquiteto de Agentes"
-titulo() { printf '\n%s━━━ Etapa %s/%s · %s%s  %s· %s%s\n' "$B$AZUL" "$1" "${#ETAPAS[@]}" "$2" "$R" "$AZUL" "$MARCA" "$R"; log "ETAPA $2"; }
+titulo() { printf '\n%s━━━ Etapa %s/%s · %s%s  %s· %s%s\n' "$B$AZUL" "$1" "${#ETAPAS[@]}" "$2" "$R" "$AZUL" "$MARCA" "$R"; log "ETAPA $2"; ETAPA_N="$1"; ETAPA_T="$2"; }
 fim_etapa() { printf '  %s── %s · etapa %s/%s concluída%s\n' "$AZUL" "$MARCA" "$1" "${#ETAPAS[@]}" "$R"; }
 # O que o aluno precisa guardar. Segredo (token, senha) vai só no gerenciador de senhas, nunca em documento.
 guarde()   { printf '  %s📌 Guarde isto no seu Google Docs:%s %s\n' "$B$AMAR" "$R" "$*"; }
@@ -73,14 +74,20 @@ banner() {
   printf '\n%s' "$B$AZUL"
   printf '  +--------------------------------------------------+\n'
   printf '  |                                                  |\n'
-  printf '  |   R E D P R O   A C A D E M Y                    |\n'
+  printf '  |   R E D P R O   A I   A C A D E M Y              |\n'
   printf '  |   Imersão Arquiteto de Agentes                   |\n'
   printf '  |   Instalador oficial do Squad de agentes         |\n'
   printf '  |                                                  |\n'
   printf '  +--------------------------------------------------+\n'
   printf '%s' "$R"
 }
-porque() { printf '%s  Por quê:%s %s\n' "$AMAR" "$R" "$*"; }
+porque() { printf '%s  Por quê:%s %s\n' "$AMAR" "$R" "$*"; pausa_etapa; }
+# Pausa antes de cada etapa (aula e aluno leem o "por quê" com calma). --direto, --so e o modo agente pulam.
+pausa_etapa() {
+  [ "$PAUSAR" = 1 ] && [ "$AGENTE" = 0 ] || return 0
+  local __v
+  read -r -p "  ${B}▶ Etapa ${ETAPA_N}/${#ETAPAS[@]} · ${ETAPA_T} · aperte Enter para começar${R} " __v <"$TTY" || true
+}
 faz()    { printf '  → %s\n' "$*"; log "$*"; }
 ok()     { printf '  %s✔ %s%s\n' "$VERDE" "$*" "$R"; log "OK $*"; }
 pula()   { printf '  %s✔ Já estava pronto:%s %s\n' "$VERDE" "$R" "$*"; log "PULA $*"; }
@@ -102,7 +109,7 @@ sim()      { local r; r=$(pergunta "$1 [s/n]"); [[ "${r,,}" =~ ^(s|sim|y|yes)$ ]
 
 feito()    { [ -f "$ESTADO/$1.ok" ]; }
 adiar()    { ADIADA=1; }   # etapa não concluída por escolha/espera do aluno: fica pendente, sem erro
-AGENTE=0; CEREBRO_ARG=""; HUMANO=(); OPCIONAL=(); NAO_MARCAR=0
+AGENTE=0; PAUSAR=1; ETAPA_N=""; ETAPA_T=""; CEREBRO_ARG=""; HUMANO=(); OPCIONAL=(); NAO_MARCAR=0
 # Modo agente: o passo precisa da pessoa (login, token, teste de acesso). Não pergunta nada:
 # registra o que falta, segue com o resto e, no fim, mostra o comando para a pessoa rodar.
 humano()   { HUMANO+=("$1|$2"); aviso "Fica para você, no seu terminal: $2"; adiar; }
@@ -256,7 +263,8 @@ etapa_ssh() {
   local p; p=$(porta_ssh)
   echo
   echo "  ${B}Teste agora, SEM fechar esta janela:${R}"
-  echo "  1. Abra OUTRO terminal no seu computador."
+  echo "  ${B}${AMAR}ATENÇÃO: este teste é no terminal do SEU COMPUTADOR, NÃO nesta tela do Console web.${R}"
+  echo "  1. No seu computador, abra o terminal (Windows: PowerShell · Mac: Terminal). Deixe esta tela aberta."
   if [ "${p:-22}" = 22 ]; then echo "  2. Digite:  ssh $U@$ip"; else echo "  2. Digite:  ssh -p $p $U@$ip"; fi
   echo "     Se você deu outro nome à chave (não é o id_ed25519), diga qual:  ssh -i ~/.ssh/NOME_DA_CHAVE $U@$ip"
   echo "  3. Se entrar sem pedir senha da VPS, deu certo. Pode sair com: exit"
@@ -734,13 +742,14 @@ main() {
       --refazer) refazer="$2"; shift 2 ;;
       --pacote) PACOTE_LOCAL="$(readlink -f "$2")"; shift 2 ;;
       --agente) AGENTE=1; shift ;;
+      --direto) PAUSAR=0; shift ;;
       --cerebro) case "${2:-}" in claude|chatgpt) CEREBRO_ARG="$2" ;; *) erro "Use --cerebro claude ou --cerebro chatgpt" ;; esac; shift 2 ;;
       --listar) for e in "${ETAPAS[@]}"; do feito "$e" && echo "✔ $e" || echo "· $e"; done; exit 0 ;;
-      -h|--help) sed -n '2,29p' "$0"; exit 0 ;;
+      -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
       *) erro "Opção desconhecida: $1 (use --help)" ;;
     esac
   done
-  [ "$(id -u)" -eq 0 ] || erro "Rode como root: sudo bash instalar.sh"
+  [ "$(id -u)" -eq 0 ] || erro "Rode como root: sudo bash configurar-vps.sh"
   if [ "$AGENTE" = 0 ] && ! tem_terminal; then
     AGENTE=1
     echo "Sem terminal interativo (parece um agente rodando o instalador): ligando o modo agente."
@@ -762,6 +771,7 @@ main() {
     [ "$e" != cerebro ] || rm -f "$ESTADO/cerebro" "$ESTADO/agentes.ok"
   done
   if [ -n "$so" ]; then
+    PAUSAR=0
     [[ " ${ETAPAS[*]} " == *" $so "* ]] || erro "Etapa desconhecida: $so. Etapas: ${ETAPAS[*]}"
     rodar_etapa "$so" forcar
   else

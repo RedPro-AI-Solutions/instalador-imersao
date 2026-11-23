@@ -17,7 +17,7 @@ A cada etapa, o instalador explica em português o que está fazendo e por quê.
 Na Hostinger, abra o **Console web** da VPS (já entra como root) e cole o comando da página protegida da aula (redpro.com.br/configurar-vps). Ele tem a chave da turma:
 
 ```bash
-curl -fsSL "https://redpro.com.br/instalar?k=CHAVE" -o instalar.sh && bash instalar.sh
+curl -fsSL "https://redpro.com.br/instalar?k=CHAVE" -o configurar-vps.sh && bash configurar-vps.sh
 ```
 
 Sem a chave (ou com chave errada) o endereço responde 404. O pacote dos agentes vem pela mesma rota, com a mesma chave, e é conferido por sha256.
@@ -37,7 +37,7 @@ sudo instalar-imersao --refazer cerebro  # refaz uma etapa já concluída
 O agente roda o instalador por você com `--agente`. Nesse modo o instalador não pergunta nada: faz tudo o que não precisa de você e deixa para o fim os passos com login, token ou teste de acesso. No fim, ele imprime o comando exato que **você** roda no seu próprio terminal para cada um (por exemplo `ssh -t root@IP 'sudo instalar-imersao --so cerebro'`) e a linha `PENDENTES_DA_PESSOA=...`. Nenhum token, senha ou código de login passa pelo chat do agente.
 
 ```bash
-ssh root@IP 'curl -fsSL "https://redpro.com.br/instalar?k=CHAVE" -o instalar.sh && nohup bash instalar.sh --agente --cerebro claude > instalar-agente.log 2>&1 &'
+ssh root@IP 'curl -fsSL "https://redpro.com.br/instalar?k=CHAVE" -o configurar-vps.sh && nohup bash configurar-vps.sh --agente --cerebro claude > instalar-agente.log 2>&1 &'
 ssh root@IP 'tail -n 40 instalar-agente.log'   # até aparecer PENDENTES_DA_PESSOA
 ```
 
@@ -55,9 +55,9 @@ Skills de terceiros e suas licenças: veja `CREDITOS.md`.
 
 ## Para quem mantém
 
-- `instalar.sh`: o instalador.
+- `configurar-vps.sh`: o instalador.
 - `pacote/`: os agentes e os modelos de marca.
 - `sincronizar-perfis.sh`: traz as versões novas dos 3 perfis (SOUL, skills, golden, scripts) para `pacote/agentes/`.
-- `construir-pacote.sh`: monta o `pacote-squad.tar.gz` da release.
+- `construir-pacote.sh`: monta o `configurar-vps.tar.gz` da release.
 - `varredura.sh`: recusa dados pessoais, chaves e marcas. Roda antes de cada push e dentro do `construir-pacote.sh`.
-- Publicar uma versão: o `instalar.sh` (com o marcador `__IMERSAO_CHAVE__` intacto) e o `pacote-squad.tar.gz` são cifrados no site com `scripts/cifrar-instalador.sh` (repositório link_bio_tree) e servidos só com a chave. Mudou o instalador ou o pacote? Cifre de novo e faça o deploy.
+- Publicar uma versão: o `configurar-vps.sh` (com o marcador `__IMERSAO_CHAVE__` intacto) e o `configurar-vps.tar.gz` são cifrados no site com `scripts/cifrar-instalador.sh` (repositório link_bio_tree) e servidos só com a chave. Mudou o instalador ou o pacote? Cifre de novo e faça o deploy.
