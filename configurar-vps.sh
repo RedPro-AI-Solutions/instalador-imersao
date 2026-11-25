@@ -17,7 +17,7 @@
 #     --pacote <arquivo>  usa um pacote .tar.gz local em vez de baixar
 #     --listar            mostra as etapas e o que já está pronto
 #     --direto            roda sem parar antes de cada etapa (para quem vai reinstalar)
-#     --agente            modo para agente de terminal (Claude Code, Codex, Gemini CLI):
+#     --agente            modo para agente de terminal (Claude Code ou Codex):
 #                         faz tudo o que não precisa de você e, no fim, lista os passos com
 #                         login, token ou teste de acesso para você rodar no SEU terminal.
 #                         Liga sozinho quando não há terminal interativo.
@@ -494,6 +494,7 @@ aplicar_cerebro() {
 etapa_agentes() {
   titulo 8 "Instalar os 3 agentes do Squad"
   porque "cada agente é um perfil separado no Hermes, com a própria personalidade (SOUL), habilidades e memória. Um não mexe nas coisas do outro."
+  echo "  Leva de 5 a 8 minutos (baixa as habilidades dos 3 agentes). A barra anda sozinha; não aperte nada até terminar."
   if [ -z "$(cerebro_escolhido)" ]; then
     [ "$AGENTE" = 1 ] || erro "Escolha o cérebro antes: sudo instalar-imersao --so cerebro"
     aviso "Os agentes esperam a escolha da assinatura (--cerebro claude ou --cerebro chatgpt)."; adiar; return 0

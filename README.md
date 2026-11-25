@@ -33,7 +33,7 @@ sudo instalar-imersao --so whatsapp      # liga o Atendimento ao WhatsApp do neg
 sudo instalar-imersao --refazer cerebro  # refaz uma etapa já concluída
 ```
 
-### Com um agente de terminal (Claude Code, Codex, Gemini CLI)
+### Com um agente de terminal (Claude Code ou Codex)
 
 O agente roda o instalador por você com `--agente`. Nesse modo o instalador não pergunta nada: faz tudo o que não precisa de você e deixa para o fim os passos com login, token ou teste de acesso. No fim, ele imprime o comando exato que **você** roda no seu próprio terminal para cada um (por exemplo `ssh -t root@IP 'sudo instalar-imersao --so cerebro'`) e a linha `PENDENTES_DA_PESSOA=...`. Nenhum token, senha ou código de login passa pelo chat do agente.
 
