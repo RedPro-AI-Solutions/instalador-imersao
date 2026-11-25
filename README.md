@@ -3,7 +3,7 @@
 Este instalador prepara, numa VPS Ubuntu novinha, tudo o que o seu Squad de agentes precisa para funcionar 24 horas:
 
 1. **Blinda o servidor.** Cria o usuário `hermes` com acesso por chave SSH e liga o firewall (só a porta do SSH fica aberta). Também ativa o fail2ban e as atualizações de segurança automáticas (quando uma delas pede reinício, a VPS reinicia sozinha às 4h e os agentes voltam sozinhos). O login por senha e o acesso do root só são desligados **depois** que você confirma que consegue entrar com a chave.
-2. **Instala o Hermes** numa versão fixa e testada (v0.22.5).
+2. **Instala o Hermes** numa versão fixa e testada (commit 99fcd69, base 0.22).
 3. **Conecta o cérebro** à sua assinatura do Claude (Pro/Max) ou do ChatGPT (Plus/Pro). Não usa chave de API.
 4. **Instala os 3 agentes do Squad**: Atendimento, Carrosséis e Landing pages. Eles vêm com modelos em branco dos arquivos da sua marca.
 5. **Liga um bot do Telegram por agente.** Só você consegue falar com ele.

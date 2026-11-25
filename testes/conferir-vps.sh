@@ -26,7 +26,7 @@ confere "fail2ban rodando"               h "systemctl is-active --quiet fail2ban
 confere "atualização automática ligada"  h "systemctl is-enabled --quiet unattended-upgrades"
 
 echo "== Hermes e agentes"
-confere "Hermes v0.22.5" h "~/.local/bin/hermes --version | grep -q 'v0.22.5'"
+confere "Hermes no commit 99fcd69 (base 0.22)" h "~/.local/bin/hermes --version | grep -q 'v0.22.5'"
 for p in mkt-atendimento mkt-conteudo mkt-landing; do
   confere "serviço imersao-$p ligado" h "systemctl is-active --quiet imersao-$p"
   r=$(h "timeout 180 ~/.local/bin/hermes -p $p -z 'Responda em uma frase curta quem você é.'" 2>/dev/null | tr '\n' ' ')

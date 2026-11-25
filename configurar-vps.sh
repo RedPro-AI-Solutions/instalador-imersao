@@ -34,8 +34,8 @@ set -Eeuo pipefail
 umask 022
 
 # ---------------------------------------------------------------- versões fixas
-HERMES_COMMIT="99fcd6944360925943688d30c39ec9a490ccdeb1"   # Hermes v0.22.5
-HERMES_VERSAO="v0.22.5"
+HERMES_COMMIT="99fcd6944360925943688d30c39ec9a490ccdeb1"   # Hermes fixado neste commit (base 0.22; não é a tag v0.22.5)
+HERMES_VERSAO="fixo no commit 99fcd69, base 0.22"
 PLUGIN_CLAUDE_REPO="NousResearch/hermes-plugin-claude-subscription-directsdk"
 PLUGIN_CLAUDE_REF="bfe6d9f0b76309f1731ba00c9fc0034f910e7aac"
 PLUGIN_CLAUDE_NOME="claude-subscription-directsdk-experimental"
