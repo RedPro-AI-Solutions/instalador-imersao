@@ -1,6 +1,6 @@
 ---
 name: onboarding
-description: Comando /onboarding: inicia ou refaz o onboarding da marca.
+description: "Comando /onboarding: inicia ou refaz o onboarding da marca."
 ---
 # /onboarding
 
