@@ -29,6 +29,7 @@ Depois que o root for trancado, entre como `hermes` e use:
 sudo instalar-imersao            # roda de novo e pula o que já está pronto
 sudo instalar-imersao --listar   # mostra as etapas prontas e as pendentes
 sudo instalar-imersao --so telegram      # roda só uma etapa
+sudo instalar-imersao --refazer bots     # cria de novo o bot de um agente (pergunta qual)
 sudo instalar-imersao --so whatsapp      # liga o Atendimento ao WhatsApp do negócio
 sudo instalar-imersao --refazer cerebro  # refaz uma etapa já concluída
 ```

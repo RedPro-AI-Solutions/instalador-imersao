@@ -13,7 +13,7 @@
 #     --so <etapa>        roda só uma etapa (ex.: --so telegram, --so cerebro)
 #     --whatsapp          liga o Atendimento ao WhatsApp do negócio (o mesmo que --so whatsapp;
 #                         fica fora do fluxo normal, é feito no fim da noite 2)
-#     --refazer <etapa>   refaz uma etapa que já tinha sido concluída
+#     --refazer <etapa>   refaz uma etapa que já tinha sido concluída (ex.: --refazer bots)
 #     --pacote <arquivo>  usa um pacote .tar.gz local em vez de baixar
 #     --listar            mostra as etapas e o que já está pronto
 #     --direto            roda sem parar antes de cada etapa (para quem vai reinstalar)
@@ -23,7 +23,7 @@
 #                         Liga sozinho quando não há terminal interativo.
 #     --cerebro <qual>    claude ou chatgpt (evita a pergunta; útil no modo agente)
 #  Etapas: sistema atualizar usuario firewall ssh hermes cerebro agentes
-#          telegram servico conferir onboarding   (extra: whatsapp, só com --so)
+#          bots telegram servico conferir onboarding   (extra: whatsapp, só com --so)
 #
 #  Segurança: nenhum token aparece na tela nem vai para o log. Tokens são
 #  digitados escondidos e guardados em arquivo que só o usuário hermes lê.
@@ -58,7 +58,7 @@ PACOTE_DIR="/opt/imersao/pacote"
 MARCA_DIR="$UHOME/marca"
 AGENTES=(mkt-atendimento mkt-conteudo mkt-landing)
 declare -A NOME_AGENTE=([mkt-atendimento]="Atendimento" [mkt-conteudo]="Carrosséis" [mkt-landing]="Landing pages")
-ETAPAS=(sistema atualizar usuario firewall ssh hermes cerebro agentes telegram servico conferir onboarding)
+ETAPAS=(sistema atualizar usuario firewall ssh hermes cerebro agentes bots telegram servico conferir onboarding)
 # Fora do fluxo normal: o WhatsApp do Atendimento é ligado no fim da noite 2, só com --so whatsapp (ou --whatsapp).
 ETAPAS_EXTRA=(whatsapp)
 
@@ -162,7 +162,7 @@ sim()      { local r; r=$(pergunta "$1 [s/n]"); [[ "${r,,}" =~ ^(s|sim|y|yes)$ ]
 
 feito()    { [ -f "$ESTADO/$1.ok" ]; }
 adiar()    { ADIADA=1; }   # etapa não concluída por escolha/espera do aluno: fica pendente, sem erro
-AGENTE=0; PAUSAR=1; ETAPA_N=""; ETAPA_T=""; CEREBRO_ARG=""; HUMANO=(); OPCIONAL=(); NAO_MARCAR=0
+AGENTE=0; PAUSAR=1; REFAZER=""; ETAPA_N=""; ETAPA_T=""; CEREBRO_ARG=""; HUMANO=(); OPCIONAL=(); NAO_MARCAR=0
 # Modo agente: o passo precisa da pessoa (login, token, teste de acesso). Não pergunta nada:
 # registra o que falta, segue com o resto e, no fim, mostra o comando para a pessoa rodar.
 humano()   { HUMANO+=("$1|$2"); aviso "Fica para você, no seu terminal: $2"; adiar; }
@@ -179,6 +179,7 @@ env_set() {
   printf '%s=%s\n' "$chave" "$valor" >>"$arq.tmp"
   chown "$U:$U" "$arq.tmp"; chmod 600 "$arq.tmp"; mv "$arq.tmp" "$arq"
 }
+env_del() { [ -f "$1" ] && sed -i "/^$2=/d" "$1" || true; }
 env_get() { [ -f "$1" ] && sed -n "s/^$2=//p" "$1" | tail -1 || true; }
 
 # Chamada à API do Telegram sem o token aparecer na lista de processos (vai pela entrada padrão do curl).
@@ -534,31 +535,100 @@ resumo_bots() {
 }
 
 # =============================================================================
+# O @ sugerido leva um final só desta VPS (guardado), para quase nunca bater com um bot que já existe.
+sufixo_bots() {
+  local f="$ESTADO/bots-sufixo"
+  [ -s "$f" ] || od -An -N2 -tx1 /dev/urandom | tr -d ' \n' >"$f"   # 4 letras/números
+  cat "$f"
+}
+declare -A BOT_BASE=([mkt-atendimento]="atendimento" [mkt-conteudo]="carrosseis" [mkt-landing]="landing")
+
+etapa_bots() {
+  titulo 9 "Criar os 3 bots do Telegram no BotFather"
+  porque "cada agente fala com você por um bot próprio do Telegram. Quem cria bots é o BotFather, o bot oficial do Telegram. Você cria os 3 agora, um de cada vez."
+  local p envf token usuario faltam=() nbot=0 rot suf antigo
+  [ -d "$UHOME/.hermes/profiles" ] || erro "Instale os agentes antes: sudo instalar-imersao --so agentes"
+  suf=$(sufixo_bots)
+  if [ "$AGENTE" = 0 ]; then
+    echo "  1. No celular, abra o Telegram e entre em:  ${B}t.me/BotFather${R}  (selo azul de verificado)"
+    echo "  2. Toque em Iniciar (ou mande /start)."
+    echo "  Ordem: Atendimento → Carrosséis → Landing pages. Depois de cada bot eu peço o token dele."
+  fi
+  for p in "${AGENTES[@]}"; do
+    nbot=$((nbot + 1)); rot=${NOME_AGENTE[$p]^^}
+    envf="$UHOME/.hermes/profiles/$p/.env"
+    token=$(env_get "$envf" TELEGRAM_BOT_TOKEN)
+    antigo=""; [ -z "$token" ] || antigo=$(tg "$token" getMe 2>/dev/null | jq -r '.result.username // empty' || true)
+    if [ -n "$antigo" ]; then
+      if [[ "$REFAZER" != *" bots "* ]] || [ "$AGENTE" = 1 ] || ! sim "O agente ${NOME_AGENTE[$p]} já tem o bot @$antigo. Quer criar outro no lugar?"; then
+        pula "bot do agente ${NOME_AGENTE[$p]} (@$antigo)"; continue
+      fi
+    fi
+    if [ "$AGENTE" = 1 ]; then faltam+=("${NOME_AGENTE[$p]}"); continue; fi
+    echo
+    echo "  ${B}Bot $nbot de ${#AGENTES[@]} · agente de $rot${R}"
+    echo "  a) No BotFather, mande:              ${B}/newbot${R}"
+    echo "  b) Ele pede o NOME. Copie e mande:   ${B}Agente de ${NOME_AGENTE[$p]}${R}"
+    echo "  c) Ele pede o @. Copie e mande:      ${B}${BOT_BASE[$p]}_${suf}_bot${R}"
+    echo "     Se ele disser que já existe (\"already taken\"), troque só o final, por exemplo ${BOT_BASE[$p]}_${suf}2_bot."
+    echo "     O @ precisa terminar em \"bot\"."
+    echo "  d) Ele responde com o TOKEN: a linha comprida com dois-pontos, logo abaixo de \"Use this token to access the HTTP API\"."
+    guarde_segredo "o token do bot de ${NOME_AGENTE[$p]}. Copie e salve no seu gerenciador de senhas ANTES de seguir."
+    pergunta "Criou o bot e salvou o token? Aperte Enter." >/dev/null
+    echo "  ${AMAR}Ao colar, o token NÃO aparece na tela. É normal: cole uma vez só e aperte Enter.${R}"
+    usuario=""
+    while :; do
+      token=$(segredo "Bot $nbot de ${#AGENTES[@]} · agente de $rot · cole o token (não aparece na tela):")
+      [ -n "$token" ] || continue
+      if usuario=$(tg "$token" getMe 2>/dev/null | jq -r '.result.username // empty') && [ -n "$usuario" ]; then break; fi
+      aviso "Esse token não funcionou no Telegram. Copie de novo a mensagem do BotFather (o token inteiro, com os dois-pontos) e cole outra vez."
+    done
+    ok "Bot @$usuario conferido"
+    guarde "o bot do agente ${NOME_AGENTE[$p]} é @$usuario (t.me/$usuario)"
+    if [ "$usuario" != "$antigo" ]; then
+      # Bot novo: o dono é confirmado de novo na etapa do Telegram (/start).
+      systemctl stop "imersao-$p" 2>/dev/null || true
+      env_del "$envf" TELEGRAM_ALLOWED_USERS
+      env_del "$envf" TELEGRAM_HOME_CHANNEL
+      rm -f "$ESTADO/telegram.ok"
+    fi
+    install -d -o "$U" -g "$U" -m 700 "$(dirname "$envf")"
+    env_set "$envf" TELEGRAM_BOT_TOKEN "$token"
+    unset token
+  done
+  if [ ${#faltam[@]} -gt 0 ]; then
+    local lista; lista=$(printf '%s, ' "${faltam[@]}"); lista=${lista%, }
+    humano bots "criar no BotFather o bot de cada agente ($lista) e colar o token"
+  fi
+}
+
+# =============================================================================
 etapa_telegram() {
-  titulo 9 "Dar um bot do Telegram para cada agente"
+  titulo 10 "Ligar cada bot ao SEU Telegram"
   porque "é pelo Telegram que você conversa com cada agente. Cada um tem o próprio bot, e só VOCÊ consegue falar com ele."
-  [ "$AGENTE" = 1 ] || { echo "  Você criou os 3 bots na noite 1. Pegue os tokens no seu gerenciador de senhas."; echo "  Ordem: Atendimento → Carrosséis → Landing pages."; }
   local p envf token tid nome usuario faltam=() nbot=0 rot
   for p in "${AGENTES[@]}"; do
     nbot=$((nbot + 1)); rot=${NOME_AGENTE[$p]^^}
     envf="$UHOME/.hermes/profiles/$p/.env"
     token=$(env_get "$envf" TELEGRAM_BOT_TOKEN)
-    if [ -n "$token" ] && [ -n "$(env_get "$envf" TELEGRAM_ALLOWED_USERS)" ] && tg "$token" getMe >/dev/null 2>&1; then
+    usuario=""; [ -z "$token" ] || usuario=$(tg "$token" getMe 2>/dev/null | jq -r '.result.username // empty' || true)
+    if [ -n "$usuario" ] && [ -n "$(env_get "$envf" TELEGRAM_ALLOWED_USERS)" ]; then
       pula "bot do agente ${NOME_AGENTE[$p]}"; continue
     fi
     if [ "$AGENTE" = 1 ]; then faltam+=("${NOME_AGENTE[$p]}"); continue; fi
     echo
     echo "  ${B}Bot $nbot de ${#AGENTES[@]} · agente de $rot${R}"
-    echo "  ${AMAR}Ao colar, o token NÃO aparece na tela. É normal: cole uma vez só e aperte Enter.${R}"
-    usuario=""
-    while :; do
-      token=$(segredo "Bot $nbot de ${#AGENTES[@]} · agente de $rot · cole o token que você guardou (não aparece na tela):")
-      [ -n "$token" ] || continue
-      if usuario=$(tg "$token" getMe 2>/dev/null | jq -r '.result.username // empty') && [ -n "$usuario" ]; then break; fi
-      aviso "Esse token não funcionou no Telegram. Copie de novo do seu gerenciador de senhas (o token inteiro, com os dois-pontos) e cole outra vez."
-    done
-    ok "Bot @$usuario conferido"
-    guarde "o bot do agente ${NOME_AGENTE[$p]} é @$usuario (t.me/$usuario)"
+    if [ -z "$usuario" ]; then   # sem bot da etapa anterior (ex.: rodou só --so telegram): pede o token aqui
+      echo "  ${AMAR}Ao colar, o token NÃO aparece na tela. É normal: cole uma vez só e aperte Enter.${R}"
+      while :; do
+        token=$(segredo "Bot $nbot de ${#AGENTES[@]} · agente de $rot · cole o token que você guardou (não aparece na tela):")
+        [ -n "$token" ] || continue
+        if usuario=$(tg "$token" getMe 2>/dev/null | jq -r '.result.username // empty') && [ -n "$usuario" ]; then break; fi
+        aviso "Esse token não funcionou no Telegram. Copie de novo do seu gerenciador de senhas (o token inteiro, com os dois-pontos) e cole outra vez."
+      done
+      ok "Bot @$usuario conferido"
+      guarde "o bot do agente ${NOME_AGENTE[$p]} é @$usuario (t.me/$usuario)"
+    fi
     systemctl stop "imersao-$p" 2>/dev/null || true   # o serviço ligado "come" as mensagens que vamos ler agora
     tg "$token" deleteWebhook >/dev/null 2>&1 || true
     tg_limpar "$token"   # descarta mensagens antigas: só vale o /start mandado agora
@@ -583,7 +653,7 @@ etapa_telegram() {
   done
   if [ ${#faltam[@]} -gt 0 ]; then
     local lista; lista=$(printf '%s, ' "${faltam[@]}"); lista=${lista%, }
-    humano telegram "colar o token do bot do Telegram de cada agente ($lista) e mandar /start para ele"
+    humano telegram "mandar /start para o bot de cada agente ($lista) e confirmar que é você"
   fi
 }
 
@@ -667,7 +737,7 @@ EOF
 
 # =============================================================================
 etapa_servico() {
-  titulo 10 "Deixar os agentes ligados 24 horas"
+  titulo 11 "Deixar os agentes ligados 24 horas"
   porque "como serviço do sistema, cada agente liga sozinho quando a VPS reinicia e volta se cair."
   local p unit
   if ! feito agentes; then aviso "Os agentes ainda não foram instalados; o serviço fica para depois."; adiar; return 0; fi
@@ -721,7 +791,7 @@ servico_firme() {
 
 # =============================================================================
 etapa_conferir() {
-  titulo 11 "Conferência final"
+  titulo 12 "Conferência final"
   porque "instalação só está pronta quando cada agente responde de verdade."
   local p falhas=0 resp rc envf token tid
   for p in "${AGENTES[@]}"; do
@@ -757,7 +827,7 @@ etapa_conferir() {
 
 # =============================================================================
 etapa_onboarding() {
-  titulo 12 "Onboarding dos agentes"
+  titulo 13 "Onboarding dos agentes"
   printf '  %sAbra o Telegram e mande um oi para QUALQUER UM dos seus 3 agentes.%s\n' "$B" "$R"
   echo "  Ele vai conversar com você e aprender sobre o seu negócio. Leva uns 10 minutos."
 }
@@ -826,7 +896,7 @@ main() {
     case "$1" in
       --so) so="$2"; shift 2 ;;
       --whatsapp) so=whatsapp; shift ;;
-      --refazer) refazer="$2"; shift 2 ;;
+      --refazer) refazer="$2"; REFAZER=" $2 "; shift 2 ;;
       --pacote) PACOTE_LOCAL="$(readlink -f "$2")"; shift 2 ;;
       --agente) AGENTE=1; shift ;;
       --direto) PAUSAR=0; shift ;;
@@ -873,7 +943,7 @@ main() {
   echo
   if [ ${#PENDENTES[@]} -eq 0 ] && [ -n "$so" ]; then
     echo "${B}${VERDE}Etapa $so concluída.${R}"
-    [ "$so" != telegram ] || resumo_bots
+    case "$so" in bots|telegram) resumo_bots ;; esac
   elif [ ${#PENDENTES[@]} -eq 0 ]; then
     echo "${B}${VERDE}Tudo pronto.${R} Abra o Telegram: cada agente já te mandou um oi."
     resumo_bots
